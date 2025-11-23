@@ -1,0 +1,7 @@
+{
+"type": "FeatureCollection",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "id": "way/847401944", "building": null, "flooded": null, "highway": "unclassified", "lanes": "2", "surface": "paved", "oneway": null, "bridge": null, "layer": null, "tunnel": null, "type": null, "image_id": "10500500C4DD7000", "location": "Germany_Training_Public" }, "geometry": { "type": "MultiLineString", "coordinates": [ [ [ 6.956645087037242, 50.49914930210727 ], [ 6.9567356, 50.499145 ], [ 6.9568348, 50.4991254 ], [ 6.9569233, 50.499081 ], [ 6.9569595, 50.4990367 ], [ 6.9569689, 50.4989462 ], [ 6.9569327, 50.498791 ], [ 6.9569086, 50.4987091 ], [ 6.9568107, 50.4986067 ], [ 6.956645087037242, 50.498497392299036 ] ], [ [ 6.956645087037242, 50.497241473332245 ], [ 6.9567329, 50.4970976 ], [ 6.956761060968505, 50.497017893698647 ] ] ] } }
+]
+}

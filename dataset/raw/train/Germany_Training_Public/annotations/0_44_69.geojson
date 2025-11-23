@@ -1,0 +1,8 @@
+{
+"type": "FeatureCollection",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "id": "way/847402474", "building": "yes", "flooded": null, "highway": null, "lanes": null, "surface": null, "oneway": null, "bridge": null, "layer": null, "tunnel": null, "type": null, "image_id": "10500500C4DD7000", "location": "Germany_Training_Public" }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 7.0543684, 50.4815696 ], [ 7.0541819, 50.4814962 ], [ 7.0540957, 50.4815849 ], [ 7.0542821, 50.4816582 ], [ 7.0543684, 50.4815696 ] ] ] } },
+{ "type": "Feature", "properties": { "id": "way/847402506", "building": "yes", "flooded": null, "highway": null, "lanes": null, "surface": null, "oneway": null, "bridge": null, "layer": null, "tunnel": null, "type": null, "image_id": "10500500C4DD7000", "location": "Germany_Training_Public" }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 7.0540213, 50.4823272 ], [ 7.053962576150268, 50.482316934240281 ], [ 7.053962576150268, 50.482398685625732 ], [ 7.0539884, 50.4824032 ], [ 7.0540213, 50.4823272 ] ] ] } }
+]
+}

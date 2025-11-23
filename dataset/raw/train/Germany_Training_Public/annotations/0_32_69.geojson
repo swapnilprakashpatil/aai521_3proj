@@ -1,0 +1,10 @@
+{
+"type": "FeatureCollection",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "id": "way/847401998", "building": null, "flooded": null, "highway": "residential", "lanes": "2", "surface": "paved", "oneway": null, "bridge": null, "layer": null, "tunnel": null, "type": null, "image_id": "10500500C4DD7000", "location": "Germany_Training_Public" }, "geometry": { "type": "LineString", "coordinates": [ [ 6.995572082682452, 50.481566913831273 ], [ 6.9956517, 50.4815823 ], [ 6.9959682, 50.4817223 ], [ 6.9961667, 50.4818008 ] ] } },
+{ "type": "Feature", "properties": { "id": "way/847404434", "building": "yes", "flooded": null, "highway": null, "lanes": null, "surface": null, "oneway": null, "bridge": null, "layer": null, "tunnel": null, "type": null, "image_id": "10500500C4DD7000", "location": "Germany_Training_Public" }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 6.9968501, 50.4820211 ], [ 6.9967267, 50.4819767 ], [ 6.9966495, 50.4820636 ], [ 6.9967729, 50.482108 ], [ 6.9968501, 50.4820211 ] ] ] } },
+{ "type": "Feature", "properties": { "id": "way/847404435", "building": "yes", "flooded": null, "highway": null, "lanes": null, "surface": null, "oneway": null, "bridge": null, "layer": null, "tunnel": null, "type": null, "image_id": "10500500C4DD7000", "location": "Germany_Training_Public" }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 6.9958192, 50.4819012 ], [ 6.9958851, 50.4818212 ], [ 6.9957215, 50.4817666 ], [ 6.9956555, 50.4818466 ], [ 6.9958192, 50.4819012 ] ] ] } },
+{ "type": "Feature", "properties": { "id": "way/847404436", "building": "yes", "flooded": null, "highway": null, "lanes": null, "surface": null, "oneway": null, "bridge": null, "layer": null, "tunnel": null, "type": null, "image_id": "10500500C4DD7000", "location": "Germany_Training_Public" }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 6.9956464, 50.4817103 ], [ 6.995572082682452, 50.481682101426713 ], [ 6.995572082682452, 50.481789519925933 ], [ 6.9956464, 50.4817103 ] ] ] } }
+]
+}

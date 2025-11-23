@@ -1,0 +1,10 @@
+{
+"type": "FeatureCollection",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "id": "way/847406298", "building": null, "flooded": null, "highway": "unclassified", "lanes": "2", "surface": "paved", "oneway": null, "bridge": null, "layer": null, "tunnel": null, "type": null, "image_id": "10500500C4DD7000", "location": "Germany_Training_Public" }, "geometry": { "type": "LineString", "coordinates": [ [ 6.962967310337483, 50.477554395876041 ], [ 6.9630106, 50.477625 ], [ 6.9632158, 50.4779075 ], [ 6.9634143, 50.4781285 ], [ 6.9635725, 50.4782548 ], [ 6.9636878, 50.4783411 ], [ 6.963893, 50.4784887 ] ] } },
+{ "type": "Feature", "properties": { "id": "way/847406299", "building": null, "flooded": null, "highway": "unclassified", "lanes": "2", "surface": "paved", "oneway": null, "bridge": null, "layer": null, "tunnel": null, "type": null, "image_id": "10500500C4DD7000", "location": "Germany_Training_Public" }, "geometry": { "type": "LineString", "coordinates": [ [ 6.963893, 50.4784887 ], [ 6.9640285, 50.4785903 ], [ 6.9643369, 50.4788583 ], [ 6.9645971, 50.4790085 ], [ 6.9649364, 50.4791902 ] ] } },
+{ "type": "Feature", "properties": { "id": "way/847406300", "building": null, "flooded": null, "highway": "unclassified", "lanes": "2", "surface": "paved", "oneway": null, "bridge": null, "layer": null, "tunnel": null, "type": null, "image_id": "10500500C4DD7000", "location": "Germany_Training_Public" }, "geometry": { "type": "LineString", "coordinates": [ [ 6.9649364, 50.4791902 ], [ 6.965328, 50.4793993 ] ] } },
+{ "type": "Feature", "properties": { "id": "way/847406355", "building": null, "flooded": null, "highway": "unclassified", "lanes": "2", "surface": "unpaved", "oneway": null, "bridge": null, "layer": null, "tunnel": null, "type": null, "image_id": "10500500C4DD7000", "location": "Germany_Training_Public" }, "geometry": { "type": "LineString", "coordinates": [ [ 6.966376835948545, 50.479957854570053 ], [ 6.965328, 50.4793993 ] ] } }
+]
+}
