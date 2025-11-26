@@ -8,6 +8,9 @@ import cv2
 from typing import Tuple, List, Dict, Optional
 from pathlib import Path
 import warnings
+from skimage import morphology, filters, exposure, restoration
+from skimage.segmentation import chan_vese
+from scipy import ndimage
 
 
 class ImagePreprocessor:
@@ -36,48 +39,102 @@ class ImagePreprocessor:
                 tileGridSize=clahe_tile_grid_size
             )
     
-    def remove_cloud_cover(self, image: np.ndarray, mask_threshold: float = 0.85) -> Tuple[np.ndarray, np.ndarray]:
+    def remove_cloud_cover(self, image: np.ndarray, mask_threshold: float = 0.70, aggressive: bool = True) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Detect and remove cloud cover using morphological operations and inpainting
+        Advanced cloud detection and removal using scikit-image
+        Uses multi-stage detection: brightness, texture analysis, and morphological operations
         
         Args:
             image: Input image (H, W, C), normalized to 0-1
             mask_threshold: Threshold for detecting bright cloud pixels
+            aggressive: Use more sensitive detection thresholds
             
         Returns:
             Tuple of (cloud-removed image, cloud mask)
         """
-        # Convert to uint8 for processing
+        # Convert to uint8 and extract channels
         img_uint8 = (image * 255).astype(np.uint8)
         
-        # Detect clouds using brightness and texture
-        # Clouds are typically bright and have low texture variance
+        # Multi-stage cloud detection
+        # Stage 1: Brightness-based detection (clouds are bright)
         gray = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2GRAY)
+        if aggressive:
+            bright_mask = gray > 160  # Lower threshold for more detection
+        else:
+            bright_mask = gray > int(mask_threshold * 255)
         
-        # Brightness threshold
-        _, bright_mask = cv2.threshold(gray, int(mask_threshold * 255), 255, cv2.THRESH_BINARY)
+        # Stage 2: Blue channel analysis (clouds are blue-white)
+        blue_excess = img_uint8[:, :, 2].astype(float) - (img_uint8[:, :, 0].astype(float) + img_uint8[:, :, 1].astype(float)) / 2
+        blue_mask = blue_excess > 10
         
-        # Refine mask using morphological operations
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        cloud_mask = cv2.morphologyEx(bright_mask, cv2.MORPH_CLOSE, kernel)
-        cloud_mask = cv2.morphologyEx(cloud_mask, cv2.MORPH_OPEN, kernel)
+        # Stage 3: Texture analysis (clouds have low texture variance)
+        from skimage.filters import rank
+        from skimage.morphology import disk
+        try:
+            # Calculate local entropy
+            selem = disk(7)
+            entropy_img = rank.entropy(gray, selem)
+            # Clouds have low entropy (uniform texture)
+            texture_mask = entropy_img < np.percentile(entropy_img, 25)
+        except:
+            # Fallback if rank filters fail
+            texture_mask = np.zeros_like(bright_mask)
         
-        # Inpaint cloud regions
-        inpainted = cv2.inpaint(img_uint8, cloud_mask, 3, cv2.INPAINT_TELEA)
+        # Stage 4: Saturation analysis (clouds have low saturation)
+        hsv = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2HSV)
+        low_sat_mask = hsv[:, :, 1] < 40
+        
+        # Stage 5: Value analysis (clouds are bright in HSV)
+        high_value_mask = hsv[:, :, 2] > 200
+        
+        # Combine all detection stages
+        cloud_mask_combined = (bright_mask & blue_mask) | (bright_mask & low_sat_mask & texture_mask) | (high_value_mask & low_sat_mask)
+        cloud_mask_combined = cloud_mask_combined.astype(np.uint8) * 255
+        
+        # Refine mask using advanced morphological operations
+        # Remove small noise
+        cloud_mask_refined = morphology.remove_small_objects(
+            cloud_mask_combined > 0, min_size=100, connectivity=2
+        )
+        cloud_mask_refined = morphology.remove_small_holes(
+            cloud_mask_refined, area_threshold=200
+        )
+        
+        # Dilate to ensure full cloud coverage
+        selem = morphology.disk(5 if aggressive else 3)
+        cloud_mask_refined = morphology.dilation(cloud_mask_refined, selem)
+        cloud_mask_final = (cloud_mask_refined * 255).astype(np.uint8)
+        
+        # Advanced inpainting using multiple methods
+        if np.sum(cloud_mask_final > 0) > 200:  # Only if significant clouds detected
+            # Method 1: Navier-Stokes based inpainting (better for large regions)
+            inpainted_ns = cv2.inpaint(img_uint8, cloud_mask_final, 10, cv2.INPAINT_NS)
+            
+            # Method 2: Fast marching method
+            inpainted_telea = cv2.inpaint(img_uint8, cloud_mask_final, 7, cv2.INPAINT_TELEA)
+            
+            # Blend both methods for best results
+            result_uint8 = cv2.addWeighted(inpainted_ns, 0.6, inpainted_telea, 0.4, 0)
+            
+            # Apply bilateral filter to smooth transitions
+            result_uint8 = cv2.bilateralFilter(result_uint8, 7, 75, 75)
+        else:
+            result_uint8 = img_uint8
         
         # Convert back to float
-        result = inpainted.astype(np.float32) / 255.0
-        mask_float = cloud_mask.astype(np.float32) / 255.0
+        result = result_uint8.astype(np.float32) / 255.0
+        mask_float = cloud_mask_final.astype(np.float32) / 255.0
         
         return result, mask_float
     
-    def deblur_image(self, image: np.ndarray, kernel_size: int = 5) -> np.ndarray:
+    def deblur_image(self, image: np.ndarray, kernel_size: int = 11, strength: str = 'high') -> np.ndarray:
         """
-        Apply deblurring using unsharp masking and Wiener deconvolution approximation
+        Advanced deblurring using Wiener deconvolution, Richardson-Lucy, and unsharp masking
         
         Args:
             image: Input image (H, W, C), normalized to 0-1
-            kernel_size: Size of the sharpening kernel
+            kernel_size: Size of the deconvolution kernel
+            strength: Deblurring strength ('medium' or 'high')
             
         Returns:
             Deblurred image
@@ -85,20 +142,72 @@ class ImagePreprocessor:
         # Convert to uint8
         img_uint8 = (image * 255).astype(np.uint8)
         
-        # Method 1: Unsharp masking
-        gaussian = cv2.GaussianBlur(img_uint8, (kernel_size, kernel_size), 0)
-        unsharp = cv2.addWeighted(img_uint8, 1.5, gaussian, -0.5, 0)
+        # Create motion blur PSF
+        psf = np.zeros((kernel_size, kernel_size))
+        psf[kernel_size // 2, :] = 1.0
+        psf = psf / psf.sum()
         
-        # Method 2: Laplacian sharpening for detail enhancement
-        laplacian = cv2.Laplacian(img_uint8, cv2.CV_64F)
-        sharpened = img_uint8.astype(np.float64) - 0.3 * laplacian
-        sharpened = np.clip(sharpened, 0, 255).astype(np.uint8)
+        try:
+            # Method 1: Wiener deconvolution
+            deconvolved = np.zeros_like(image)
+            for i in range(3):
+                channel = image[:, :, i]
+                deconv_channel = restoration.wiener(channel, psf, balance=0.05)
+                deconvolved[:, :, i] = np.clip(deconv_channel, 0, 1)
+            deconv_uint8 = (deconvolved * 255).astype(np.uint8)
+        except Exception as e:
+            deconv_uint8 = img_uint8
         
-        # Blend both methods
-        result = cv2.addWeighted(unsharp, 0.6, sharpened, 0.4, 0)
+        try:
+            # Method 2: Richardson-Lucy deconvolution
+            rl_deconvolved = np.zeros_like(image)
+            for i in range(3):
+                rl_channel = restoration.richardson_lucy(image[:, :, i], psf, num_iter=15)
+                rl_deconvolved[:, :, i] = np.clip(rl_channel, 0, 1)
+            rl_uint8 = (rl_deconvolved * 255).astype(np.uint8)
+        except Exception as e:
+            rl_uint8 = img_uint8
+        
+        # Method 3: Enhanced unsharp masking
+        gaussian_blur = cv2.GaussianBlur(img_uint8, (9, 9), 2.0)
+        if strength == 'high':
+            unsharp = cv2.addWeighted(img_uint8, 2.5, gaussian_blur, -1.5, 0)
+        else:
+            unsharp = cv2.addWeighted(img_uint8, 2.0, gaussian_blur, -1.0, 0)
+        
+        # Method 4: Edge enhancement with Sobel
+        gray = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2GRAY)
+        sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+        sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+        edges = np.sqrt(sobelx**2 + sobely**2)
+        edges = np.clip(edges, 0, 255).astype(np.uint8)
+        edges_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2RGB)
+        edge_enhanced = cv2.addWeighted(img_uint8, 1.0, edges_colored, 0.4, 0)
+        
+        # Method 5: Adaptive CLAHE
+        clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+        clahe_enhanced = np.zeros_like(img_uint8)
+        for i in range(3):
+            clahe_enhanced[:, :, i] = clahe.apply(img_uint8[:, :, i])
+        
+        # Blend all methods: Wiener (25%) + RL (20%) + Unsharp (30%) + Edge (15%) + CLAHE (10%)
+        try:
+            result = cv2.addWeighted(deconv_uint8, 0.25, rl_uint8, 0.20, 0)
+            result = cv2.addWeighted(result, 1.0, unsharp, 0.30, 0)
+            result = cv2.addWeighted(result, 1.0, edge_enhanced, 0.15, 0)
+            result = cv2.addWeighted(result, 0.9, clahe_enhanced, 0.10, 0)
+        except:
+            # Fallback to simpler blend
+            result = cv2.addWeighted(unsharp, 0.6, edge_enhanced, 0.4, 0)
+        
+        # Final sharpening with Laplacian
+        gray_result = cv2.cvtColor(result, cv2.COLOR_RGB2GRAY)
+        laplacian = cv2.Laplacian(gray_result, cv2.CV_64F, ksize=3)
+        laplacian_colored = cv2.cvtColor(np.abs(laplacian).astype(np.uint8), cv2.COLOR_GRAY2RGB)
+        result = cv2.addWeighted(result, 1.0, laplacian_colored, 0.20, 0)
         
         # Convert back to float
-        return result.astype(np.float32) / 255.0
+        return np.clip(result.astype(np.float32) / 255.0, 0, 1)
     
     def correct_geometric_distortion(self, image: np.ndarray, 
                                      correction_strength: float = 0.1) -> np.ndarray:
