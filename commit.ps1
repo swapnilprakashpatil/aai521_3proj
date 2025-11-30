@@ -1,8 +1,7 @@
 # Maximum number of files to stage per batch
 $batchSize = 500
 
-function Stage-Commit-Push {
-
+function Stage-And-Commit {
     # Get up to $batchSize changed or untracked files
     $files = git status --porcelain | Select-Object -First $batchSize
 
@@ -11,11 +10,11 @@ function Stage-Commit-Push {
         return
     }
 
-    Write-Host "`nStaging $($files.Count) files..."
+    Write-Host "Staging $($files.Count) files..."
 
-    # Extract paths
+    # Extract file paths from 'git status --porcelain' output
     $paths = $files | ForEach-Object {
-        $_.Substring(3)  # Skip status chars
+        $_.Substring(3)   # skip two status chars + space
     }
 
     # Stage files
@@ -23,20 +22,16 @@ function Stage-Commit-Push {
         git add -- "$path"
     }
 
-    # Commit
+    # Commit the batch
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $commitMessage = "Batch commit ($($paths.Count) files) - $timestamp"
 
     git commit -m "$commitMessage"
-    Write-Host "Committed $($paths.Count) files."
 
-    # Push
-    Write-Host "Pushing batch..."
-    git push
-    Write-Host "Push complete."
-
-    # Continue recursively
-    Stage-Commit-Push
+    Write-Host "Committed $($paths.Count) files. Continuing..."
+    
+    # Recursively process more files
+    Stage-And-Commit
 }
 
-Stage-Commit-Push
+Stage-And-Commit
