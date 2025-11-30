@@ -134,7 +134,8 @@ class DatasetLoader:
                 'shape': image.shape,
                 'transform': src.transform,
                 'crs': src.crs,
-                'bounds': src.bounds
+                'bounds': src.bounds,
+                'filename': image_path.name  # Add original filename
             }
             
             # Transpose to (H, W, C)

@@ -14,9 +14,10 @@ import warnings
 import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing
+import cv2
 
 from config import (
-    GERMANY_TRAIN, LOUISIANA_EAST_TRAIN,
+    TRAIN_PATH,
     PROCESSED_TRAIN_DIR, PROCESSED_VAL_DIR, PROCESSED_TEST_DIR,
     PATCH_SIZE, PATCH_OVERLAP, MIN_FLOOD_PIXELS,
     TRAIN_RATIO, VAL_RATIO, TEST_RATIO,
@@ -44,10 +45,14 @@ class DataPreprocessor:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Create subdirectories
+        # Create subdirectories for patches
         (self.output_dir / 'images').mkdir(exist_ok=True)
         (self.output_dir / 'masks').mkdir(exist_ok=True)
         (self.output_dir / 'metadata').mkdir(exist_ok=True)
+        
+        # Create subdirectories for processed full-resolution images
+        (self.output_dir / 'processed_images').mkdir(exist_ok=True)
+        # Region-specific directories will be created dynamically as regions are processed
         
         # Initialize processors
         self.image_preprocessor = ImagePreprocessor(
@@ -174,6 +179,10 @@ class DataPreprocessor:
             
             if not tile_data or tile_data['pre_image'] is None:
                 return []
+            
+            # Get original image filenames from metadata
+            pre_filename = tile_data.get('pre_metadata', {}).get('filename')
+            post_filename = tile_data.get('post_metadata', {}).get('filename')
                 
             # Process tile
             patch_metadata = self.process_tile(
@@ -181,7 +190,9 @@ class DataPreprocessor:
                 post_image=tile_data['post_image'],
                 mask=tile_data['mask'],
                 tile_name=tile_name,
-                region=region_name
+                region=region_name,
+                pre_image_filename=pre_filename,
+                post_image_filename=post_filename
             )
             
             return patch_metadata
@@ -195,7 +206,9 @@ class DataPreprocessor:
                     post_image: np.ndarray,
                     mask: np.ndarray,
                     tile_name: str,
-                    region: str) -> List[Dict]:
+                    region: str,
+                    pre_image_filename: str = None,
+                    post_image_filename: str = None) -> List[Dict]:
         """
         Process a single tile
         
@@ -205,6 +218,8 @@ class DataPreprocessor:
             mask: Segmentation mask
             tile_name: Name of the tile
             region: Region name
+            pre_image_filename: Original pre-event image filename
+            post_image_filename: Original post-event image filename
             
         Returns:
             List of patch metadata
@@ -264,8 +279,11 @@ class DataPreprocessor:
         if APPLY_CLAHE:
             pre_processed = self.image_preprocessor.apply_clahe_enhancement(pre_processed)
             post_processed = self.image_preprocessor.apply_clahe_enhancement(post_processed)
-            apply_standardization=False
-        )
+            apply_standardization=False        
+        
+        # Save processed full-resolution images
+        self._save_processed_images(pre_processed, post_processed, tile_name, region, 
+                                   pre_image_filename, post_image_filename)
         
         # Concatenate pre and post images (6 channels)
         combined_image = np.concatenate([pre_processed, post_processed], axis=2)
@@ -313,6 +331,57 @@ class DataPreprocessor:
                 
         return patch_metadata_list
     
+    def _save_processed_images(self, pre_image: np.ndarray, post_image: np.ndarray, 
+                               tile_name: str, region: str, pre_image_filename: str = None, 
+                               post_image_filename: str = None):
+        """
+        Save processed full-resolution images maintaining folder structure
+        
+        Args:
+            pre_image: Processed pre-event image
+            post_image: Processed post-event image
+            tile_name: Name of the tile (annotation file)
+            region: Region name (full folder name)
+            pre_image_filename: Original pre-event image filename (with extension)
+            post_image_filename: Original post-event image filename (with extension)
+        """
+        # Create region-specific directory
+        region_dir = self.output_dir / 'processed_images' / region
+        region_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create PRE-event and POST-event subdirectories
+        pre_dir = region_dir / 'PRE-event'
+        post_dir = region_dir / 'POST-event'
+        pre_dir.mkdir(exist_ok=True)
+        post_dir.mkdir(exist_ok=True)
+        
+        # Use original filenames if provided, otherwise fall back to tile name
+        if pre_image_filename:
+            # Keep original filename, just ensure .tif extension
+            pre_base_name = Path(pre_image_filename).stem
+        else:
+            pre_base_name = tile_name.replace('.geojson', '')
+        
+        if post_image_filename:
+            # Keep original filename, just ensure .tif extension
+            post_base_name = Path(post_image_filename).stem
+        else:
+            post_base_name = tile_name.replace('.geojson', '')
+        
+        # Convert float32 [0, 1] to uint16 for TIF format (better precision than uint8)
+        # Scale from [0, 1] to [0, 65535]
+        pre_image_uint16 = (np.clip(pre_image, 0, 1) * 65535).astype(np.uint16)
+        post_image_uint16 = (np.clip(post_image, 0, 1) * 65535).astype(np.uint16)
+        
+        # Save pre-event image as TIF
+        pre_path = pre_dir / f"{pre_base_name}.tif"
+        # OpenCV uses BGR, but our images are RGB, so convert
+        cv2.imwrite(str(pre_path), cv2.cvtColor(pre_image_uint16, cv2.COLOR_RGB2BGR))
+        
+        # Save post-event image as TIF
+        post_path = post_dir / f"{post_base_name}.tif"
+        cv2.imwrite(str(post_path), cv2.cvtColor(post_image_uint16, cv2.COLOR_RGB2BGR))
+    
     def save_metadata(self, metadata_list: List[Dict], split_name: str = 'train'):
         """
         Save metadata to file
@@ -334,6 +403,8 @@ class DataPreprocessor:
                 return float(obj)
             elif isinstance(obj, np.ndarray):
                 return obj.tolist()
+            elif isinstance(obj, (np.bool_, bool)):
+                return bool(obj)
             else:
                 return obj
         
@@ -435,29 +506,87 @@ def create_geo_stratified_split(
     return train_metadata, val_metadata, test_metadata
 
 
+def copy_processed_full_images(metadata_list: List[Dict], src_dir: Path, dst_dir: Path):
+    """
+    Copy processed full-resolution images for tiles in metadata_list
+    
+    Args:
+        metadata_list: List of patch metadata
+        src_dir: Source directory (e.g., PROCESSED_TRAIN_DIR)
+        dst_dir: Destination directory (e.g., PROCESSED_VAL_DIR or PROCESSED_TEST_DIR)
+    """
+    # Get unique tiles from metadata
+    unique_tiles = set()
+    for metadata in metadata_list:
+        tile_name = metadata['tile_name'].replace('.geojson', '')
+        region = metadata['region']
+        unique_tiles.add((region, tile_name))
+    
+    # Copy each unique tile's processed images
+    for region, tile_name in unique_tiles:
+        # Copy PRE-event image
+        src_pre = src_dir / 'processed_images' / region / 'PRE-event' / f"{tile_name}.tif"
+        dst_pre = dst_dir / 'processed_images' / region / 'PRE-event' / f"{tile_name}.tif"
+        if src_pre.exists():
+            shutil.copy2(src_pre, dst_pre)
+        
+        # Copy POST-event image
+        src_post = src_dir / 'processed_images' / region / 'POST-event' / f"{tile_name}.tif"
+        dst_post = dst_dir / 'processed_images' / region / 'POST-event' / f"{tile_name}.tif"
+        if src_post.exists():
+            shutil.copy2(src_post, dst_post)
+
+
+def discover_training_regions(train_path: Path) -> List[Tuple[Path, str]]:
+    """
+    Discover all training regions from the raw dataset directory
+    
+    Args:
+        train_path: Path to the training data directory
+        
+    Returns:
+        List of tuples (region_path, region_name)
+    """
+    regions = []
+    
+    # Look for directories ending with '_Training_Public'
+    for item in train_path.iterdir():
+        if item.is_dir() and '_Training_Public' in item.name:
+            # Use full folder name as region name
+            region_name = item.name
+            regions.append((item, region_name))
+    
+    return sorted(regions, key=lambda x: x[1])
+
+
 def main():
     """Main preprocessing pipeline"""
     print("\n" + "="*80)
     print("FLOOD DETECTION - DATA PREPROCESSING PIPELINE")
     print("="*80)
     
-    # Process training regions
+    # Discover training regions dynamically
+    training_regions = discover_training_regions(TRAIN_PATH)
+    
+    if not training_regions:
+        print("\n⚠ No training regions found in:", TRAIN_PATH)
+        print("Expected directories with pattern: *_Training_Public")
+        return
+    
+    print(f"\nDiscovered {len(training_regions)} training region(s):")
+    for region_path, region_name in training_regions:
+        print(f"  - {region_name}: {region_path.name}")
+    
+    # Process all discovered regions
     all_metadata = []
-    
-    # Process Germany
     preprocessor_train = DataPreprocessor(output_dir=PROCESSED_TRAIN_DIR)
-    germany_metadata = preprocessor_train.process_region(
-        GERMANY_TRAIN,
-        'Germany'
-    )
-    all_metadata.extend(germany_metadata)
     
-    # Process Louisiana-East
-    louisiana_metadata = preprocessor_train.process_region(
-        LOUISIANA_EAST_TRAIN,
-        'Louisiana-East'
-    )
-    all_metadata.extend(louisiana_metadata)
+    for region_path, region_name in training_regions:
+        region_metadata = preprocessor_train.process_region(
+            region_path,
+            region_name
+        )
+        all_metadata.extend(region_metadata)
     
     print(f"\n{'='*80}")
     print("PROCESSING SUMMARY")
@@ -491,10 +620,19 @@ def main():
     PROCESSED_VAL_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_TEST_DIR.mkdir(parents=True, exist_ok=True)
     
+    # Get unique regions from metadata
+    unique_regions = set(m['region'] for m in all_metadata)
+    
     for split_dir in [PROCESSED_VAL_DIR, PROCESSED_TEST_DIR]:
         (split_dir / 'images').mkdir(exist_ok=True)
         (split_dir / 'masks').mkdir(exist_ok=True)
         (split_dir / 'metadata').mkdir(exist_ok=True)
+        # Create processed_images subdirectories for each region
+        (split_dir / 'processed_images').mkdir(exist_ok=True)
+        for region in unique_regions:
+            (split_dir / 'processed_images' / region).mkdir(exist_ok=True)
+            (split_dir / 'processed_images' / region / 'PRE-event').mkdir(exist_ok=True)
+            (split_dir / 'processed_images' / region / 'POST-event').mkdir(exist_ok=True)
     
     # Move validation files
     for metadata in tqdm(val_metadata, desc="Moving validation files"):
@@ -533,6 +671,11 @@ def main():
         # Update paths
         metadata['image_path'] = str(dst_img.relative_to(PROCESSED_TEST_DIR.parent))
         metadata['mask_path'] = str(dst_mask.relative_to(PROCESSED_TEST_DIR.parent))
+    
+    # Copy processed full-resolution images for validation and test splits
+    print(f"\nCopying processed full-resolution images...")
+    copy_processed_full_images(val_metadata, PROCESSED_TRAIN_DIR, PROCESSED_VAL_DIR)
+    copy_processed_full_images(test_metadata, PROCESSED_TRAIN_DIR, PROCESSED_TEST_DIR)
     
     # Save metadata for each split
     print(f"\nSaving metadata...")
@@ -579,6 +722,14 @@ def main():
     print(f"  Training: {PROCESSED_TRAIN_DIR}")
     print(f"  Validation: {PROCESSED_VAL_DIR}")
     print(f"  Test: {PROCESSED_TEST_DIR}")
+    print(f"\nOutput structure:")
+    print(f"  - images/         : Extracted patches (512x512, 6 channels)")
+    print(f"  - masks/          : Segmentation masks for patches")
+    print(f"  - processed_images/: Full-resolution processed images")
+    for region in sorted(unique_regions):
+        print(f"    - {region}/PRE-event/  : Processed pre-event {region} images")
+        print(f"    - {region}/POST-event/ : Processed post-event {region} images")
+    print(f"  - metadata/       : JSON, pickle, and CSV metadata files")
     
 
 if __name__ == "__main__":

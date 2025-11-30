@@ -127,10 +127,51 @@ VAL_RATIO = 0.15
 TEST_RATIO = 0.15  # For internal validation; actual test set is Louisiana-West
 
 # ============= Training Configuration =============
+# Learning rate and optimization
 LEARNING_RATE = 1e-4
 WEIGHT_DECAY = 1e-5
 NUM_EPOCHS = 100
 EARLY_STOPPING_PATIENCE = 15
+GRADIENT_CLIP_VAL = 1.0
+
+# Loss configuration
+LOSS_TYPE = 'combined'  # 'ce', 'dice', 'focal', 'combined'
+LOSS_CE_WEIGHT = 1.0
+LOSS_DICE_WEIGHT = 1.0
+LOSS_FOCAL_WEIGHT = 0.5
+FOCAL_GAMMA = 2.0
+
+# Learning rate scheduler
+USE_SCHEDULER = True
+SCHEDULER_TYPE = 'cosine'  # 'step', 'cosine', 'plateau'
+SCHEDULER_STEP_SIZE = 30
+SCHEDULER_GAMMA = 0.1
+SCHEDULER_T_MAX = 100
+SCHEDULER_MIN_LR = 1e-6
+
+# Mixed precision training
+USE_AMP = True  # Automatic Mixed Precision
+
+# Model-specific configurations
+MODEL_CONFIGS = {
+    'unet++': {
+        'encoder_name': 'resnet34',
+        'encoder_weights': 'imagenet',
+        'decoder_channels': [256, 128, 64, 32, 16],
+        'decoder_attention_type': None
+    },
+    'deeplabv3+': {
+        'encoder_name': 'resnet50',
+        'encoder_weights': 'imagenet',
+        'encoder_output_stride': 16,
+        'decoder_channels': 256,
+        'decoder_atrous_rates': (12, 24, 36)
+    },
+    'segformer': {
+        'model_name': 'nvidia/segformer-b0-finetuned-ade-512-512',
+        'pretrained': True
+    }
+}
 
 # ============= Utility Functions =============
 def set_seed(seed=42):
