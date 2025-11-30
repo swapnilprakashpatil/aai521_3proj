@@ -29,12 +29,12 @@ MANIFEST
 docs/
 prompts/
 # dataset/processed/train/images/
-dataset/processed/train/masks/
-dataset/processed/train/metadata/
+# dataset/processed/train/masks/
+# dataset/processed/train/metadata/
 dataset/processed/train/processed_images/
-dataset/processed/val/images/
-dataset/processed/val/masks/
-dataset/processed/val/metadata/
+# dataset/processed/val/images/
+# dataset/processed/val/masks/
+# dataset/processed/val/metadata/
 dataset/processed/val/processed_images/
 
 # PyInstaller
