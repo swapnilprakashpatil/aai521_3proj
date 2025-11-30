@@ -15,7 +15,8 @@ from rasterio.features import rasterize
 import cv2
 import warnings
 
-warnings.filterwarnings('ignore', category=rasterio.errors.NotGeoreferencedWarning)
+# Suppress rasterio warnings
+warnings.filterwarnings('ignore', message='.*not georeferenced.*')
 
 
 class DatasetLoader:

@@ -168,7 +168,7 @@ MODEL_CONFIGS = {
         'decoder_atrous_rates': (12, 24, 36)
     },
     'segformer': {
-        'model_name': 'nvidia/segformer-b0-finetuned-ade-512-512',
+        'segformer_model_name': 'nvidia/segformer-b0-finetuned-ade-512-512',
         'pretrained': True
     }
 }

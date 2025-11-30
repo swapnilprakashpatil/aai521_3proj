@@ -290,6 +290,9 @@ def create_model(
         return DeepLabV3Plus(in_channels=in_channels, num_classes=num_classes, **kwargs)
     
     elif model_name in ['segformer', 'seg_former']:
+        # Handle segformer_model_name -> model_name mapping
+        if 'segformer_model_name' in kwargs:
+            kwargs['model_name'] = kwargs.pop('segformer_model_name')
         return SegFormer(in_channels=in_channels, num_classes=num_classes, **kwargs)
     
     else:

@@ -83,12 +83,7 @@ class FloodDataset(Dataset):
                         contrast_limit=0.2,
                         p=1.0
                     ),
-                    A.HueSaturationValue(
-                        hue_shift_limit=10,
-                        sat_shift_limit=20,
-                        val_shift_limit=10,
-                        p=1.0
-                    ),
+                    A.RandomGamma(gamma_limit=(80, 120), p=1.0),
                 ], p=0.5),
                 A.OneOf([
                     A.GaussNoise(var_limit=(10.0, 50.0), p=1.0),
@@ -155,6 +150,9 @@ class FloodDataset(Dataset):
             transformed = self.transform(image=image, mask=mask)
             image = transformed['image']
             mask = transformed['mask']
+            # Ensure mask is int64 (Long) for CrossEntropyLoss
+            if isinstance(mask, torch.Tensor):
+                mask = mask.long()
         
         return {
             'image': image,
@@ -167,6 +165,10 @@ class FloodDataset(Dataset):
     def get_class_weights(self) -> torch.Tensor:
         """Get class weights for loss function"""
         return torch.from_numpy(self.class_weights).float()
+    
+    def get_class_distribution(self) -> np.ndarray:
+        """Get class distribution (pixel counts per class)"""
+        return self.class_counts
 
 
 def create_dataloaders(

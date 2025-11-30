@@ -74,6 +74,7 @@ class ImagePreprocessor:
     def deblur_image(self, image: np.ndarray, kernel_size: int = 5) -> np.ndarray:
         """
         Apply deblurring using unsharp masking and Wiener deconvolution approximation
+        FIXED: Proper weight normalization to preserve contrast
         
         Args:
             image: Input image (H, W, C), normalized to 0-1
@@ -85,20 +86,28 @@ class ImagePreprocessor:
         # Convert to uint8
         img_uint8 = (image * 255).astype(np.uint8)
         
-        # Method 1: Unsharp masking
+        # Method 1: Unsharp masking with proper weights
         gaussian = cv2.GaussianBlur(img_uint8, (kernel_size, kernel_size), 0)
         unsharp = cv2.addWeighted(img_uint8, 1.5, gaussian, -0.5, 0)
+        unsharp = np.clip(unsharp, 0, 255).astype(np.uint8)
         
         # Method 2: Laplacian sharpening for detail enhancement
         laplacian = cv2.Laplacian(img_uint8, cv2.CV_64F)
         sharpened = img_uint8.astype(np.float64) - 0.3 * laplacian
         sharpened = np.clip(sharpened, 0, 255).astype(np.uint8)
         
-        # Blend both methods
-        result = cv2.addWeighted(unsharp, 0.6, sharpened, 0.4, 0)
+        # Blend both methods with normalized weights (60% + 40% = 100%)
+        result = (unsharp.astype(np.float32) * 0.6 + sharpened.astype(np.float32) * 0.4)
+        result = np.clip(result, 0, 255).astype(np.uint8)
+        
+        # Apply CLAHE for contrast enhancement
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        result_enhanced = np.zeros_like(result)
+        for c in range(3):
+            result_enhanced[:, :, c] = clahe.apply(result[:, :, c])
         
         # Convert back to float
-        return result.astype(np.float32) / 255.0
+        return result_enhanced.astype(np.float32) / 255.0
     
     def correct_geometric_distortion(self, image: np.ndarray, 
                                      correction_strength: float = 0.1) -> np.ndarray:
