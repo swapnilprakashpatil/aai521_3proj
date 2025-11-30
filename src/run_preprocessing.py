@@ -1,22 +1,6 @@
 """
 Main preprocessing script to process raw data and export to processed format
 Handles train/val/test splits with geo-stratification
-
-PERFORMANCE OPTIMIZATIONS:
-- Uses ProcessPoolExecutor instead of ThreadPoolExecutor for true parallel processing
-  (bypasses Python's Global Interpreter Lock for CPU-intensive tasks)
-- Utilizes all CPU cores instead of leaving one idle
-- Module-level wrapper functions for efficient multiprocessing serialization
-- Batch processing to reduce I/O overhead
-- Expected speedup: 3-5x faster than ThreadPoolExecutor implementation
-
-FEATURES:
-- Advanced preprocessing: cloud removal, deblurring, geometric correction
-- Quality filtering based on valid pixels and cloud coverage
-- CLAHE enhancement for contrast improvement
-- Patch extraction with flood oversampling
-- Full-resolution processed image export
-- Comprehensive metadata tracking
 """
 
 import numpy as np
@@ -913,57 +897,9 @@ def main():
     DataPreprocessor(PROCESSED_TRAIN_DIR).save_metadata(train_metadata, 'train')
     DataPreprocessor(PROCESSED_VAL_DIR).save_metadata(val_metadata, 'val')
     
-    # ========== PROCESS TEST DATA ==========
-    print(f"\n{'='*80}")
-    print("STEP 3: PROCESSING TEST DATA (Louisiana-West)")
-    print(f"{'='*80}")
-    
-    # Find Louisiana-West test directory
-    test_regions = []
-    for item in TEST_PATH.iterdir():
-        if item.is_dir() and 'Test_Public' in item.name:
-            test_regions.append((item, item.name))
-    
-    if test_regions:
-        print(f"\nDiscovered {len(test_regions)} test region(s):")
-        for region_path, region_name in test_regions:
-            print(f"  - {region_name}: {region_path}")
-        
-        # Process test regions
-        all_test_metadata = []
-        preprocessor_test = DataPreprocessor(output_dir=PROCESSED_TEST_DIR)
-        
-        for region_path, region_name in test_regions:
-            region_metadata = preprocessor_test.process_region(
-                region_path,
-                region_name
-            )
-            all_test_metadata.extend(region_metadata)
-        
-        print(f"\n{'='*80}")
-        print("TEST DATA PROCESSING SUMMARY")
-        print(f"{'='*80}")
-        print(f"Total tiles processed: {preprocessor_test.stats['processed_tiles']}")
-        print(f"Total tiles failed: {preprocessor_test.stats['failed_tiles']}")
-        print(f"Quality check failures: {preprocessor_test.stats['quality_failed']}")
-        print(f"Total patches extracted: {preprocessor_test.stats['total_patches']}")
-        print(f"Flood-positive patches: {preprocessor_test.stats['flood_positive_patches']}")
-        
-        if preprocessor_test.stats['total_patches'] > 0:
-            flood_ratio = preprocessor_test.stats['flood_positive_patches'] / preprocessor_test.stats['total_patches']
-            print(f"Flood ratio: {flood_ratio*100:.2f}%")
-        
-        # Save test metadata
-        print(f"\nSaving test metadata...")
-        preprocessor_test.save_metadata(all_test_metadata, 'test')
-    else:
-        print("\n⚠ No test regions found in:", TEST_PATH)
-        print("Skipping test data processing.")
-        all_test_metadata = []
-    
     # ========== CALCULATE DATASET STATISTICS ==========
     print(f"\n{'='*80}")
-    print("STEP 4: CALCULATING DATASET STATISTICS")
+    print("STEP 3: CALCULATING DATASET STATISTICS")
     print(f"{'='*80}")
     
     # Sample images for statistics (use subset for speed)
@@ -996,7 +932,6 @@ def main():
     
     # ========== FINAL SUMMARY ==========
     print(f"\n{'='*80}")
-    print("PREPROCESSING COMPLETE!")
     print(f"{'='*80}")
     print(f"\nProcessed data saved to:")
     print(f"  Training: {PROCESSED_TRAIN_DIR}")
@@ -1005,10 +940,6 @@ def main():
     print(f"  Validation: {PROCESSED_VAL_DIR}")
     print(f"    - Patches: {len(val_metadata)}")
     print(f"    - Flood-positive: {sum(1 for m in val_metadata if m['is_flood_positive'])}")
-    print(f"  Test: {PROCESSED_TEST_DIR}")
-    print(f"    - Patches: {len(all_test_metadata)}")
-    if all_test_metadata:
-        print(f"    - Flood-positive: {sum(1 for m in all_test_metadata if m['is_flood_positive'])}")
     
     print(f"\nOutput structure:")
     print(f"  - images/         : Extracted patches (512x512, 6 channels)")
@@ -1017,7 +948,7 @@ def main():
     
     # Get all unique regions
     all_regions = set()
-    for metadata in train_metadata + val_metadata + all_test_metadata:
+    for metadata in train_metadata + val_metadata:
         all_regions.add(metadata['region'])
     
     for region in sorted(all_regions):
@@ -1025,7 +956,7 @@ def main():
         print(f"      - PRE-event/  : Processed pre-event images")
         print(f"      - POST-event/ : Processed post-event images")
     print(f"  - metadata/       : JSON, pickle, and CSV metadata files")
-    
+        
 
 if __name__ == "__main__":
     import random
