@@ -28,7 +28,7 @@ MANIFEST
 *.md
 docs/
 prompts/
-dataset/processed/
+dataset/processed
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
