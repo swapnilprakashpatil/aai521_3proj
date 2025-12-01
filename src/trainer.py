@@ -347,7 +347,7 @@ class Trainer:
             best_path = self.checkpoint_dir / 'best_model.pth'
             torch.save(checkpoint, best_path)
             if not silent:
-                print(f"  ✓ Best model saved (Val IoU: {self.best_val_iou:.4f})")
+                print(f"Best model saved (Val IoU: {self.best_val_iou:.4f})")
     
     def load_checkpoint(self, checkpoint_path: Path):
         """

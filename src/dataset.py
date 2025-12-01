@@ -233,7 +233,9 @@ def create_dataloaders(
         shuffle=True,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        drop_last=True  # Drop incomplete batches for batch norm stability
+        drop_last=True,  # Drop incomplete batches for batch norm stability
+        persistent_workers=num_workers > 0,  # Keep workers alive (critical for Windows)
+        prefetch_factor=2 if num_workers > 0 else None  # Prefetch batches for speed
     )
     
     val_loader = DataLoader(
@@ -241,7 +243,9 @@ def create_dataloaders(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=pin_memory
+        pin_memory=pin_memory,
+        persistent_workers=num_workers > 0,
+        prefetch_factor=2 if num_workers > 0 else None
     )
     
     test_loader = DataLoader(
@@ -249,7 +253,9 @@ def create_dataloaders(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=pin_memory
+        pin_memory=pin_memory,
+        persistent_workers=num_workers > 0,
+        prefetch_factor=2 if num_workers > 0 else None
     )
     
     print(f"\nDataLoaders created:")
