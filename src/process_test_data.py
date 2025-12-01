@@ -26,7 +26,7 @@ def main():
             test_regions.append((item, item.name))
     
     if not test_regions:
-        print("\n⚠ No test regions found in:", TEST_PATH)
+        print("\nNo test regions found in:", TEST_PATH)
         print("Skipping test data processing.")
         return
     

@@ -222,12 +222,11 @@ def main():
     print(f"\n{'='*80}")
     print("METADATA EXPORT COMPLETE!")
     print(f"{'='*80}")
-    print("\n✓ Metadata files generated:")
+    print("\nMetadata files generated:")
     print("  - JSON (human-readable)")
     print("  - Pickle (fast loading)")
     print("  - CSV (spreadsheet-compatible)")
-    print("\n✓ Ready for model training!")
-
+    print("\nReady for model training!")
 
 if __name__ == '__main__':
     main()

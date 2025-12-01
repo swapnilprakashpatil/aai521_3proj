@@ -330,13 +330,14 @@ class Trainer:
         avg_loss = total_loss / num_batches
         return avg_loss
     
-    def save_checkpoint(self, is_best: bool = False, filename: str = 'checkpoint.pth'):
+    def save_checkpoint(self, is_best: bool = False, filename: str = 'checkpoint.pth', silent: bool = False):
         """
         Save model checkpoint
         
         Args:
             is_best: Whether this is the best model so far
             filename: Checkpoint filename
+            silent: If True, suppress print messages
         """
         checkpoint = {
             'epoch': self.current_epoch,
@@ -353,10 +354,9 @@ class Trainer:
         torch.save(checkpoint, checkpoint_path)
         
         # Save best model separately
-        if is_best:
+        if is_best and not silent:
             best_path = self.checkpoint_dir / 'best_model.pth'
             torch.save(checkpoint, best_path)
-            print(f"  ✓ Best model saved (Val IoU: {self.best_val_iou:.4f})")
     
     def load_checkpoint(self, checkpoint_path: Path):
         """
@@ -409,11 +409,14 @@ class Trainer:
         epoch_summaries = []
         
         # Create progress bar for all epochs
-        epoch_pbar = tqdm(range(start_epoch, num_epochs + 1), desc="Training Progress", leave=True)
+        epoch_pbar = tqdm(range(start_epoch, num_epochs + 1), desc="Training Progress", unit="epoch", leave=True, ncols=120)
         
         for epoch in epoch_pbar:
             self.current_epoch = epoch
             epoch_start = time.time()
+            
+            # Get resource usage at start of epoch
+            cpu_percent = psutil.cpu_percent(interval=0.1)
             
             # Train
             train_loss = self.train_epoch()
@@ -424,12 +427,13 @@ class Trainer:
             # Get learning rate
             current_lr = self.optimizer.param_groups[0]['lr']
             
-            # Log metrics
+            # Log metrics (suppress per-epoch print)
             train_metrics, val_metrics = self.metrics_tracker.log_epoch(
                 epoch=epoch,
                 train_loss=train_loss,
                 val_loss=val_loss,
-                learning_rate=current_lr
+                learning_rate=current_lr,
+                print_summary=False  # Suppress individual epoch prints
             )
             
             # Update learning rate (OneCycleLR steps per batch, others step per epoch)
@@ -447,14 +451,15 @@ class Trainer:
                 self.best_val_iou = val_metrics['mean_iou']
                 self.best_epoch = epoch
             
-            # Save checkpoint
-            self.save_checkpoint(is_best=is_best, filename=f'checkpoint_epoch_{epoch}.pth')
+            # Save checkpoint (suppress print)
+            self.save_checkpoint(is_best=is_best, filename=f'checkpoint_epoch_{epoch}.pth', silent=True)
             
             epoch_time = time.time() - epoch_start
             
             # Get resource usage at end of epoch
             gpu_alloc, gpu_reserved, gpu_total = get_gpu_memory_usage()
             ram_used, ram_total, ram_percent = get_ram_usage()
+            cpu_percent_end = psutil.cpu_percent(interval=0.1)
             
             # Store epoch summary
             epoch_summaries.append({
@@ -470,28 +475,34 @@ class Trainer:
                 'is_best': is_best,
                 'gpu_alloc': gpu_alloc,
                 'gpu_total': gpu_total,
-                'ram_percent': ram_percent
+                'ram_percent': ram_percent,
+                'cpu_percent': cpu_percent_end
             })
             
             # Update progress bar with current metrics and resource usage
             postfix = {
-                'Loss': f"{val_loss:.4f}",
-                'IoU': f"{val_metrics['mean_iou']:.4f}",
-                'Best': f"{self.best_val_iou:.4f}"
+                'VLoss': f"{val_loss:.3f}",
+                'VIoU': f"{val_metrics['mean_iou']:.3f}",
+                'Best': f"{self.best_val_iou:.3f}"
             }
             if torch.cuda.is_available():
-                postfix['GPU'] = f"{gpu_alloc:.1f}GB"
+                postfix['GPU'] = f"{gpu_alloc:.1f}/{gpu_total:.0f}GB"
             postfix['RAM'] = f"{ram_percent:.0f}%"
+            postfix['CPU'] = f"{cpu_percent_end:.0f}%"
+            postfix['Time'] = f"{epoch_time:.0f}s"
             
             epoch_pbar.set_postfix(postfix)
             
+            # Print best model notification inline
+            if is_best:
+                tqdm.write(f"  [Epoch {epoch}] New best model! Val IoU: {self.best_val_iou:.4f}")
+            
             # Check early stopping
             if self.early_stopping(val_metrics['mean_iou']):
-                print(f"\nEarly stopping triggered at epoch {epoch}")
-                print(f"Best Val IoU: {self.best_val_iou:.4f} at epoch {self.best_epoch}")
+                tqdm.write(f"\nEarly stopping triggered at epoch {epoch}")
+                tqdm.write(f"Best Val IoU: {self.best_val_iou:.4f} at epoch {self.best_epoch}")
                 break
         
-        epoch_pbar.close()
         epoch_pbar.close()
         
         # Training complete
@@ -524,10 +535,10 @@ class Trainer:
         
         header = f"{'Epoch':<6} {'TrLoss':<8} {'VaLoss':<8} {'TrIoU':<7} {'VaIoU':<7} {'TrDice':<7} {'VaDice':<7} {'LR':<10} {'Time':<7}"
         if torch.cuda.is_available():
-            header += f" {'GPU':<8}"
-        header += f" {'RAM':<6} {'Best':<5}"
+            header += f" {'GPU(GB)':<9}"
+        header += f" {'RAM%':<6} {'CPU%':<6} {'Best':<5}"
         print(header)
-        print(f"{'-'*100}")
+        print(f"{'-'*110}")
         
         for summary in epoch_summaries:
             best_marker = '*' if summary['is_best'] else ''
@@ -542,8 +553,8 @@ class Trainer:
                    f"{summary['time']:<7.1f}")
             
             if torch.cuda.is_available():
-                line += f" {summary['gpu_alloc']:<8.2f}"
-            line += f" {summary['ram_percent']:<6.1f} {best_marker:<5}"
+                line += f" {summary['gpu_alloc']:<9.2f}"
+            line += f" {summary['ram_percent']:<6.1f} {summary['cpu_percent']:<6.1f} {best_marker:<5}"
             print(line)
         
         print(f"{'='*100}\n")

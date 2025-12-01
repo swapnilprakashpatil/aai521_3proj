@@ -332,7 +332,8 @@ class MetricsTracker:
         epoch: int,
         train_loss: float,
         val_loss: float,
-        learning_rate: float
+        learning_rate: float,
+        print_summary: bool = True
     ):
         """
         Log metrics for completed epoch
@@ -342,6 +343,7 @@ class MetricsTracker:
             train_loss: Training loss
             val_loss: Validation loss
             learning_rate: Current learning rate
+            print_summary: If True, print epoch summary (default: True)
         """
         # Compute metrics
         train_metrics = self.train_metrics.compute_all_metrics()
@@ -358,13 +360,14 @@ class MetricsTracker:
         self.history['val_f1'].append(val_metrics['macro_f1'])
         self.history['learning_rate'].append(learning_rate)
         
-        # Print summary
-        print(f"\nEpoch {epoch} Summary:")
-        print(f"  Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
-        print(f"  Train IoU:  {train_metrics['mean_iou']:.4f} | Val IoU:  {val_metrics['mean_iou']:.4f}")
-        print(f"  Train Dice: {train_metrics['mean_dice']:.4f} | Val Dice: {val_metrics['mean_dice']:.4f}")
-        print(f"  Train F1:   {train_metrics['macro_f1']:.4f} | Val F1:   {val_metrics['macro_f1']:.4f}")
-        print(f"  LR: {learning_rate:.6f}")
+        # Print summary if requested
+        if print_summary:
+            print(f"\nEpoch {epoch} Summary:")
+            print(f"  Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+            print(f"  Train IoU:  {train_metrics['mean_iou']:.4f} | Val IoU:  {val_metrics['mean_iou']:.4f}")
+            print(f"  Train Dice: {train_metrics['mean_dice']:.4f} | Val Dice: {val_metrics['mean_dice']:.4f}")
+            print(f"  Train F1:   {train_metrics['macro_f1']:.4f} | Val F1:   {val_metrics['macro_f1']:.4f}")
+            print(f"  LR: {learning_rate:.6f}")
         
         return train_metrics, val_metrics
     

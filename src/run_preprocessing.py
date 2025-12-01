@@ -814,7 +814,7 @@ def main():
     training_regions = discover_training_regions(TRAIN_PATH)
     
     if not training_regions:
-        print("\n⚠ No training regions found in:", TRAIN_PATH)
+        print("\nNo training regions found in:", TRAIN_PATH)
         print("Expected directories with pattern: *_Training_Public")
         return
     
