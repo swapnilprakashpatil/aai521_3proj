@@ -354,9 +354,11 @@ class Trainer:
         torch.save(checkpoint, checkpoint_path)
         
         # Save best model separately
-        if is_best and not silent:
+        if is_best:
             best_path = self.checkpoint_dir / 'best_model.pth'
             torch.save(checkpoint, best_path)
+            if not silent:
+                print(f"  ✓ Best model saved (Val IoU: {self.best_val_iou:.4f})")
     
     def load_checkpoint(self, checkpoint_path: Path):
         """
@@ -427,13 +429,13 @@ class Trainer:
             # Get learning rate
             current_lr = self.optimizer.param_groups[0]['lr']
             
-            # Log metrics (suppress per-epoch print)
+            # Log metrics (with per-epoch print)
             train_metrics, val_metrics = self.metrics_tracker.log_epoch(
                 epoch=epoch,
                 train_loss=train_loss,
                 val_loss=val_loss,
                 learning_rate=current_lr,
-                print_summary=False  # Suppress individual epoch prints
+                print_summary=True  # Show individual epoch summaries
             )
             
             # Update learning rate (OneCycleLR steps per batch, others step per epoch)
@@ -451,8 +453,8 @@ class Trainer:
                 self.best_val_iou = val_metrics['mean_iou']
                 self.best_epoch = epoch
             
-            # Save checkpoint (suppress print)
-            self.save_checkpoint(is_best=is_best, filename=f'checkpoint_epoch_{epoch}.pth', silent=True)
+            # Save checkpoint
+            self.save_checkpoint(is_best=is_best, filename=f'checkpoint_epoch_{epoch}.pth', silent=False)
             
             epoch_time = time.time() - epoch_start
             
@@ -460,6 +462,15 @@ class Trainer:
             gpu_alloc, gpu_reserved, gpu_total = get_gpu_memory_usage()
             ram_used, ram_total, ram_percent = get_ram_usage()
             cpu_percent_end = psutil.cpu_percent(interval=0.1)
+            
+            # Print resource usage
+            resource_info = f"  Resources: "
+            if torch.cuda.is_available():
+                resource_info += f"GPU: {gpu_alloc:.1f}/{gpu_total:.0f}GB | "
+            resource_info += f"RAM: {ram_percent:.0f}% | CPU: {cpu_percent_end:.0f}%"
+            print(resource_info)
+            print(f"  Epoch time: {epoch_time:.2f}s")
+            print()
             
             # Store epoch summary
             epoch_summaries.append({
@@ -479,28 +490,16 @@ class Trainer:
                 'cpu_percent': cpu_percent_end
             })
             
-            # Update progress bar with current metrics and resource usage
-            postfix = {
-                'VLoss': f"{val_loss:.3f}",
-                'VIoU': f"{val_metrics['mean_iou']:.3f}",
-                'Best': f"{self.best_val_iou:.3f}"
-            }
-            if torch.cuda.is_available():
-                postfix['GPU'] = f"{gpu_alloc:.1f}/{gpu_total:.0f}GB"
-            postfix['RAM'] = f"{ram_percent:.0f}%"
-            postfix['CPU'] = f"{cpu_percent_end:.0f}%"
-            postfix['Time'] = f"{epoch_time:.0f}s"
+            # Update overall progress bar
+            epoch_pbar.set_description(f"Training Progress [{epoch}/{num_epochs}]")
             
-            epoch_pbar.set_postfix(postfix)
-            
-            # Print best model notification inline
-            if is_best:
-                tqdm.write(f"  [Epoch {epoch}] New best model! Val IoU: {self.best_val_iou:.4f}")
+            # Update overall progress bar
+            epoch_pbar.set_description(f"Training Progress [{epoch}/{num_epochs}]")
             
             # Check early stopping
             if self.early_stopping(val_metrics['mean_iou']):
-                tqdm.write(f"\nEarly stopping triggered at epoch {epoch}")
-                tqdm.write(f"Best Val IoU: {self.best_val_iou:.4f} at epoch {self.best_epoch}")
+                print(f"\nEarly stopping triggered at epoch {epoch}")
+                print(f"Best Val IoU: {self.best_val_iou:.4f} at epoch {self.best_epoch}")
                 break
         
         epoch_pbar.close()
