@@ -481,12 +481,6 @@ class Trainer:
                 'cpu_percent': cpu_percent_end
             })
             
-            # Update overall progress bar
-            epoch_pbar.set_description(f"Training Progress [{epoch}/{num_epochs}]")
-            
-            # Update overall progress bar
-            epoch_pbar.set_description(f"Training Progress [{epoch}/{num_epochs}]")
-            
             # Check early stopping
             if self.early_stopping(val_metrics['mean_iou']):
                 print(f"\nEarly stopping triggered at epoch {epoch}")
