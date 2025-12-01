@@ -199,6 +199,43 @@ class SegmentationMetrics:
         
         return metrics
     
+    def compute_flood_metrics(self, flood_classes: List[int] = [2, 3, 4, 5]) -> Dict[str, float]:
+        """
+        Compute metrics specifically for flood-related classes
+        
+        Args:
+            flood_classes: List of class indices considered as flood
+            
+        Returns:
+            Dictionary with flood-specific metrics
+        """
+        iou_per_class, _ = self.compute_iou()
+        dice_per_class, _ = self.compute_dice()
+        pr_f1 = self.compute_precision_recall_f1()
+        
+        # Get metrics for flood classes only
+        flood_iou = [iou_per_class[i] for i in flood_classes if i < len(iou_per_class)]
+        flood_dice = [dice_per_class[i] for i in flood_classes if i < len(dice_per_class)]
+        flood_precision = [pr_f1['precision'][i] for i in flood_classes if i < len(pr_f1['precision'])]
+        flood_recall = [pr_f1['recall'][i] for i in flood_classes if i < len(pr_f1['recall'])]
+        flood_f1 = [pr_f1['f1'][i] for i in flood_classes if i < len(pr_f1['f1'])]
+        
+        # Filter out NaN values
+        flood_iou = [x for x in flood_iou if not np.isnan(x)]
+        flood_dice = [x for x in flood_dice if not np.isnan(x)]
+        flood_precision = [x for x in flood_precision if not np.isnan(x)]
+        flood_recall = [x for x in flood_recall if not np.isnan(x)]
+        flood_f1 = [x for x in flood_f1 if not np.isnan(x)]
+        
+        return {
+            'flood_mean_iou': np.mean(flood_iou) if flood_iou else 0.0,
+            'flood_mean_dice': np.mean(flood_dice) if flood_dice else 0.0,
+            'flood_mean_precision': np.mean(flood_precision) if flood_precision else 0.0,
+            'flood_mean_recall': np.mean(flood_recall) if flood_recall else 0.0,
+            'flood_mean_f1': np.mean(flood_f1) if flood_f1 else 0.0,
+            'flood_iou_per_class': flood_iou
+        }
+    
     def format_metrics(self, metrics: Optional[Dict] = None) -> str:
         """
         Format metrics as readable string

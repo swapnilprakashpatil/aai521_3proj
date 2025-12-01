@@ -11,9 +11,42 @@ from typing import Dict, Optional, Callable
 import time
 from tqdm import tqdm
 import json
+import psutil
+import os
 
 from metrics import MetricsTracker
 from losses import create_loss_function
+
+
+def get_gpu_memory_usage():
+    """
+    Get current GPU memory usage.
+    
+    Returns:
+        tuple: (allocated_gb, reserved_gb, total_gb)
+    """
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / 1e9
+        reserved = torch.cuda.memory_reserved() / 1e9
+        total = torch.cuda.get_device_properties(0).total_memory / 1e9
+        return allocated, reserved, total
+    return 0.0, 0.0, 0.0
+
+
+def get_ram_usage():
+    """
+    Get current RAM usage.
+    
+    Returns:
+        tuple: (used_gb, total_gb, percent)
+    """
+    process = psutil.Process(os.getpid())
+    ram_info = psutil.virtual_memory()
+    process_ram = process.memory_info().rss / 1e9  # Process RAM in GB
+    total_ram = ram_info.total / 1e9
+    used_ram = ram_info.used / 1e9
+    percent = ram_info.percent
+    return used_ram, total_ram, percent
 
 
 class EarlyStopping:
@@ -226,11 +259,21 @@ class Trainer:
             total_loss += loss.item() * self.gradient_accumulation_steps
             self.metrics_tracker.update_train(outputs.detach(), masks)
             
-            # Update progress bar
-            pbar.set_postfix({
+            # Get resource usage
+            gpu_alloc, gpu_reserved, gpu_total = get_gpu_memory_usage()
+            ram_used, ram_total, ram_percent = get_ram_usage()
+            
+            # Update progress bar with resource usage
+            postfix = {
                 'loss': f'{loss.item() * self.gradient_accumulation_steps:.4f}',
                 'avg_loss': f'{total_loss / (pbar.n + 1):.4f}'
-            })
+            }
+            
+            if torch.cuda.is_available():
+                postfix['GPU'] = f'{gpu_alloc:.1f}/{gpu_total:.1f}GB'
+            postfix['RAM'] = f'{ram_percent:.0f}%'
+            
+            pbar.set_postfix(postfix)
         
         avg_loss = total_loss / num_batches
         return avg_loss
@@ -268,11 +311,21 @@ class Trainer:
             total_loss += loss.item()
             self.metrics_tracker.update_val(outputs, masks)
             
-            # Update progress bar
-            pbar.set_postfix({
+            # Get resource usage
+            gpu_alloc, gpu_reserved, gpu_total = get_gpu_memory_usage()
+            ram_used, ram_total, ram_percent = get_ram_usage()
+            
+            # Update progress bar with resource usage
+            postfix = {
                 'loss': f'{loss.item():.4f}',
                 'avg_loss': f'{total_loss / (pbar.n + 1):.4f}'
-            })
+            }
+            
+            if torch.cuda.is_available():
+                postfix['GPU'] = f'{gpu_alloc:.1f}/{gpu_total:.1f}GB'
+            postfix['RAM'] = f'{ram_percent:.0f}%'
+            
+            pbar.set_postfix(postfix)
         
         avg_loss = total_loss / num_batches
         return avg_loss
@@ -352,7 +405,13 @@ class Trainer:
         
         training_start = time.time()
         
-        for epoch in range(start_epoch, num_epochs + 1):
+        # Track all epoch metrics for final summary
+        epoch_summaries = []
+        
+        # Create progress bar for all epochs
+        epoch_pbar = tqdm(range(start_epoch, num_epochs + 1), desc="Training Progress", leave=True)
+        
+        for epoch in epoch_pbar:
             self.current_epoch = epoch
             epoch_start = time.time()
             
@@ -391,26 +450,103 @@ class Trainer:
             # Save checkpoint
             self.save_checkpoint(is_best=is_best, filename=f'checkpoint_epoch_{epoch}.pth')
             
+            epoch_time = time.time() - epoch_start
+            
+            # Get resource usage at end of epoch
+            gpu_alloc, gpu_reserved, gpu_total = get_gpu_memory_usage()
+            ram_used, ram_total, ram_percent = get_ram_usage()
+            
+            # Store epoch summary
+            epoch_summaries.append({
+                'epoch': epoch,
+                'train_loss': train_loss,
+                'val_loss': val_loss,
+                'train_iou': train_metrics['mean_iou'],
+                'val_iou': val_metrics['mean_iou'],
+                'train_dice': train_metrics['mean_dice'],
+                'val_dice': val_metrics['mean_dice'],
+                'lr': current_lr,
+                'time': epoch_time,
+                'is_best': is_best,
+                'gpu_alloc': gpu_alloc,
+                'gpu_total': gpu_total,
+                'ram_percent': ram_percent
+            })
+            
+            # Update progress bar with current metrics and resource usage
+            postfix = {
+                'Loss': f"{val_loss:.4f}",
+                'IoU': f"{val_metrics['mean_iou']:.4f}",
+                'Best': f"{self.best_val_iou:.4f}"
+            }
+            if torch.cuda.is_available():
+                postfix['GPU'] = f"{gpu_alloc:.1f}GB"
+            postfix['RAM'] = f"{ram_percent:.0f}%"
+            
+            epoch_pbar.set_postfix(postfix)
+            
             # Check early stopping
             if self.early_stopping(val_metrics['mean_iou']):
-                print(f"\n{'='*70}")
-                print(f"Early stopping triggered at epoch {epoch}")
+                print(f"\nEarly stopping triggered at epoch {epoch}")
                 print(f"Best Val IoU: {self.best_val_iou:.4f} at epoch {self.best_epoch}")
-                print(f"{'='*70}")
                 break
-            
-            epoch_time = time.time() - epoch_start
-            print(f"  Epoch time: {epoch_time:.2f}s")
-            print()
+        
+        epoch_pbar.close()
+        epoch_pbar.close()
         
         # Training complete
         total_time = time.time() - training_start
-        print(f"\n{'='*70}")
-        print(f"Training completed!")
-        print(f"  Total time: {total_time / 60:.2f} minutes")
-        print(f"  Best Val IoU: {self.best_val_iou:.4f} at epoch {self.best_epoch}")
-        print(f"  Best model saved to: {self.checkpoint_dir / 'best_model.pth'}")
-        print(f"{'='*70}\n")
+        
+        # Get final resource usage
+        final_gpu_alloc, final_gpu_reserved, final_gpu_total = get_gpu_memory_usage()
+        final_ram_used, final_ram_total, final_ram_percent = get_ram_usage()
+        
+        # Print comprehensive summary
+        print(f"\n{'='*80}")
+        print(f"TRAINING SUMMARY")
+        print(f"{'='*80}")
+        print(f"Total epochs: {len(epoch_summaries)}")
+        print(f"Total time: {total_time / 60:.2f} minutes ({total_time / 3600:.2f} hours)")
+        print(f"Average time per epoch: {total_time / len(epoch_summaries):.2f}s")
+        print(f"\nResource Usage:")
+        if torch.cuda.is_available():
+            print(f"  Peak GPU: {max([s['gpu_alloc'] for s in epoch_summaries]):.2f}/{final_gpu_total:.2f} GB")
+            print(f"  Final GPU: {final_gpu_alloc:.2f}/{final_gpu_total:.2f} GB")
+        print(f"  Peak RAM: {max([s['ram_percent'] for s in epoch_summaries]):.1f}%")
+        print(f"  Final RAM: {final_ram_percent:.1f}%")
+        print(f"\nBest Val IoU: {self.best_val_iou:.4f} at epoch {self.best_epoch}")
+        print(f"Best model saved to: {self.checkpoint_dir / 'best_model.pth'}")
+        
+        # Print detailed epoch-by-epoch summary
+        print(f"\n{'='*100}")
+        print(f"EPOCH-BY-EPOCH SUMMARY")
+        print(f"{'='*100}")
+        
+        header = f"{'Epoch':<6} {'TrLoss':<8} {'VaLoss':<8} {'TrIoU':<7} {'VaIoU':<7} {'TrDice':<7} {'VaDice':<7} {'LR':<10} {'Time':<7}"
+        if torch.cuda.is_available():
+            header += f" {'GPU':<8}"
+        header += f" {'RAM':<6} {'Best':<5}"
+        print(header)
+        print(f"{'-'*100}")
+        
+        for summary in epoch_summaries:
+            best_marker = '*' if summary['is_best'] else ''
+            line = (f"{summary['epoch']:<6} "
+                   f"{summary['train_loss']:<8.4f} "
+                   f"{summary['val_loss']:<8.4f} "
+                   f"{summary['train_iou']:<7.4f} "
+                   f"{summary['val_iou']:<7.4f} "
+                   f"{summary['train_dice']:<7.4f} "
+                   f"{summary['val_dice']:<7.4f} "
+                   f"{summary['lr']:<10.6f} "
+                   f"{summary['time']:<7.1f}")
+            
+            if torch.cuda.is_available():
+                line += f" {summary['gpu_alloc']:<8.2f}"
+            line += f" {summary['ram_percent']:<6.1f} {best_marker:<5}"
+            print(line)
+        
+        print(f"{'='*100}\n")
         
         # Save training history
         history_path = self.checkpoint_dir / 'training_history.json'

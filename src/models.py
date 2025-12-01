@@ -263,6 +263,300 @@ class SegFormer(nn.Module):
         return logits
 
 
+class SiameseUNetPlusPlus(nn.Module):
+    """
+    Siamese U-Net++ for change detection
+    Processes pre and post images separately, then fuses features
+    """
+    
+    def __init__(
+        self,
+        in_channels: int = 3,
+        num_classes: int = 7,
+        encoder_name: str = 'resnet34',
+        encoder_weights: str = 'imagenet',
+        fusion_type: str = 'concat'  # 'concat', 'diff', 'attention'
+    ):
+        super().__init__()
+        
+        self.fusion_type = fusion_type
+        
+        # Shared encoder for both pre and post images
+        self.encoder = smp.UnetPlusPlus(
+            encoder_name=encoder_name,
+            encoder_weights=encoder_weights,
+            in_channels=in_channels,
+            classes=256,  # Feature extraction
+            decoder_channels=[256, 128, 64, 32, 16]
+        )
+        
+        # Fusion layer
+        if fusion_type == 'concat':
+            fusion_channels = 512  # 256 * 2
+        elif fusion_type == 'diff':
+            fusion_channels = 256
+        elif fusion_type == 'attention':
+            fusion_channels = 256
+            self.attention = nn.Sequential(
+                nn.Conv2d(512, 256, 1),
+                nn.Sigmoid()
+            )
+        
+        # Segmentation head
+        self.seg_head = nn.Sequential(
+            nn.Conv2d(fusion_channels, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(0.3),
+            nn.Conv2d(128, 64, 3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, num_classes, 1)
+        )
+        
+        print(f"Siamese U-Net++ initialized:")
+        print(f"  Encoder: {encoder_name}")
+        print(f"  Fusion: {fusion_type}")
+        print(f"  Output classes: {num_classes}")
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Split into pre and post
+        pre = x[:, :3]   # First 3 channels
+        post = x[:, 3:]  # Last 3 channels
+        
+        # Encode both with shared weights
+        feat_pre = self.encoder(pre)
+        feat_post = self.encoder(post)
+        
+        # Fuse features
+        if self.fusion_type == 'concat':
+            feat_fused = torch.cat([feat_pre, feat_post], dim=1)
+        elif self.fusion_type == 'diff':
+            feat_fused = torch.abs(feat_post - feat_pre)
+        elif self.fusion_type == 'attention':
+            feat_concat = torch.cat([feat_pre, feat_post], dim=1)
+            attention_map = self.attention(feat_concat)
+            feat_fused = feat_post * attention_map
+        
+        # Segment
+        return self.seg_head(feat_fused)
+
+
+class SiameseDeepLabV3Plus(nn.Module):
+    """
+    Siamese DeepLabV3+ for change detection
+    """
+    
+    def __init__(
+        self,
+        in_channels: int = 3,
+        num_classes: int = 7,
+        encoder_name: str = 'resnet50',
+        encoder_weights: str = 'imagenet',
+        fusion_type: str = 'concat'
+    ):
+        super().__init__()
+        
+        self.fusion_type = fusion_type
+        
+        # Shared encoder
+        self.encoder = smp.DeepLabV3Plus(
+            encoder_name=encoder_name,
+            encoder_weights=encoder_weights,
+            in_channels=in_channels,
+            classes=256,
+            encoder_output_stride=16
+        )
+        
+        # Fusion layer
+        if fusion_type == 'concat':
+            fusion_channels = 512
+        elif fusion_type == 'diff':
+            fusion_channels = 256
+        elif fusion_type == 'attention':
+            fusion_channels = 256
+            self.attention = nn.Sequential(
+                nn.Conv2d(512, 256, 1),
+                nn.Sigmoid()
+            )
+        
+        # Segmentation head
+        self.seg_head = nn.Sequential(
+            nn.Conv2d(fusion_channels, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(0.3),
+            nn.Conv2d(128, num_classes, 1)
+        )
+        
+        print(f"Siamese DeepLabV3+ initialized:")
+        print(f"  Encoder: {encoder_name}")
+        print(f"  Fusion: {fusion_type}")
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        pre = x[:, :3]
+        post = x[:, 3:]
+        
+        feat_pre = self.encoder(pre)
+        feat_post = self.encoder(post)
+        
+        if self.fusion_type == 'concat':
+            feat_fused = torch.cat([feat_pre, feat_post], dim=1)
+        elif self.fusion_type == 'diff':
+            feat_fused = torch.abs(feat_post - feat_pre)
+        elif self.fusion_type == 'attention':
+            feat_concat = torch.cat([feat_pre, feat_post], dim=1)
+            attention_map = self.attention(feat_concat)
+            feat_fused = feat_post * attention_map
+        
+        return self.seg_head(feat_fused)
+
+
+class FCSiamDiff(nn.Module):
+    """
+    FC-Siam-Diff: Fully Convolutional Siamese-Difference Network
+    Best for SpaceNet8 - learns change detection explicitly
+    """
+    
+    def __init__(
+        self,
+        in_channels: int = 3,
+        num_classes: int = 7,
+        encoder_name: str = 'resnet34',
+        encoder_weights: str = 'imagenet'
+    ):
+        super().__init__()
+        
+        # Shared encoder (feature extractor)
+        encoder = smp.Unet(
+            encoder_name=encoder_name,
+            encoder_weights=encoder_weights,
+            in_channels=in_channels,
+            classes=128,
+            decoder_channels=[256, 128, 64, 32, 16]
+        )
+        self.encoder = encoder
+        
+        # Difference module
+        self.diff_conv = nn.Sequential(
+            nn.Conv2d(128, 64, 3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, 3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True)
+        )
+        
+        # Change classification head
+        self.change_head = nn.Sequential(
+            nn.Conv2d(64, 32, 3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(0.3),
+            nn.Conv2d(32, num_classes, 1)
+        )
+        
+        print(f"FC-Siam-Diff initialized:")
+        print(f"  Encoder: {encoder_name}")
+        print(f"  Optimized for change detection")
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        pre = x[:, :3]
+        post = x[:, 3:]
+        
+        # Extract features with shared encoder
+        feat_pre = self.encoder(pre)
+        feat_post = self.encoder(post)
+        
+        # Compute difference
+        diff = feat_post - feat_pre  # Signed difference captures direction of change
+        
+        # Process difference
+        diff_features = self.diff_conv(diff)
+        
+        # Classify change
+        return self.change_head(diff_features)
+
+
+class STANet(nn.Module):
+    """
+    Spatial-Temporal Attention Network
+    Uses attention to focus on changed regions
+    """
+    
+    def __init__(
+        self,
+        in_channels: int = 3,
+        num_classes: int = 7,
+        encoder_name: str = 'resnet34',
+        encoder_weights: str = 'imagenet'
+    ):
+        super().__init__()
+        
+        # Shared encoder
+        self.encoder = smp.Unet(
+            encoder_name=encoder_name,
+            encoder_weights=encoder_weights,
+            in_channels=in_channels,
+            classes=128,
+            decoder_channels=[256, 128, 64, 32, 16]
+        )
+        
+        # Spatial Attention Module (SAM)
+        self.sam = nn.Sequential(
+            nn.Conv2d(256, 128, 1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 1, 1),
+            nn.Sigmoid()
+        )
+        
+        # Channel Attention Module (CAM)
+        self.cam = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(256, 64, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 256, 1),
+            nn.Sigmoid()
+        )
+        
+        # Fusion and segmentation
+        self.fusion = nn.Sequential(
+            nn.Conv2d(256, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(0.3),
+            nn.Conv2d(128, 64, 3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, num_classes, 1)
+        )
+        
+        print("STANet initialized with spatial-temporal attention")
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        pre = x[:, :3]
+        post = x[:, 3:]
+        
+        # Extract features
+        feat_pre = self.encoder(pre)
+        feat_post = self.encoder(post)
+        
+        # Concatenate for attention
+        feat_concat = torch.cat([feat_pre, feat_post], dim=1)
+        
+        # Apply spatial attention
+        spatial_att = self.sam(feat_concat)
+        feat_spatial = feat_concat * spatial_att
+        
+        # Apply channel attention
+        channel_att = self.cam(feat_concat)
+        feat_attended = feat_spatial * channel_att
+        
+        # Segment
+        return self.fusion(feat_attended)
+
+
 def create_model(
     model_name: str,
     in_channels: int = 6,
@@ -295,8 +589,21 @@ def create_model(
             kwargs['model_name'] = kwargs.pop('segformer_model_name')
         return SegFormer(in_channels=in_channels, num_classes=num_classes, **kwargs)
     
+    elif model_name in ['siamese_unet++', 'siamese_unetplusplus']:
+        return SiameseUNetPlusPlus(in_channels=3, num_classes=num_classes, **kwargs)
+    
+    elif model_name in ['siamese_deeplabv3+', 'siamese_deeplab']:
+        return SiameseDeepLabV3Plus(in_channels=3, num_classes=num_classes, **kwargs)
+    
+    elif model_name in ['fc_siam_diff', 'fcsiamdiff', 'siam_diff']:
+        return FCSiamDiff(in_channels=3, num_classes=num_classes, **kwargs)
+    
+    elif model_name in ['stanet', 'sta_net']:
+        return STANet(in_channels=3, num_classes=num_classes, **kwargs)
+    
     else:
-        raise ValueError(f"Unknown model: {model_name}. Choose from: unet++, deeplabv3+, segformer")
+        raise ValueError(f"Unknown model: {model_name}. Choose from: unet++, deeplabv3+, segformer, "
+                        f"siamese_unet++, siamese_deeplabv3+, fc_siam_diff, stanet")
 
 
 if __name__ == "__main__":
