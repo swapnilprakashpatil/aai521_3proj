@@ -487,8 +487,6 @@ class Trainer:
                 print(f"Best Val IoU: {self.best_val_iou:.4f} at epoch {self.best_epoch}")
                 break
         
-        epoch_pbar.close()
-        
         # Training complete
         total_time = time.time() - training_start
         
