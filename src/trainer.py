@@ -81,6 +81,7 @@ class Trainer:
         use_amp: bool = True,
         gradient_clip_val: float = 1.0,
         early_stopping_patience: int = 15,
+        gradient_accumulation_steps: int = 1,
         class_names: Optional[Dict[int, str]] = None
     ):
         """
@@ -100,6 +101,7 @@ class Trainer:
             use_amp: Use automatic mixed precision
             gradient_clip_val: Gradient clipping value
             early_stopping_patience: Patience for early stopping
+            gradient_accumulation_steps: Number of steps to accumulate gradients
             class_names: Optional class name mapping
         """
         self.model = model.to(device)
@@ -112,6 +114,7 @@ class Trainer:
         self.device = device
         self.use_amp = use_amp
         self.gradient_clip_val = gradient_clip_val
+        self.gradient_accumulation_steps = gradient_accumulation_steps
         
         # Setup directories
         self.checkpoint_dir = Path(checkpoint_dir) / experiment_name
@@ -156,56 +159,76 @@ class Trainer:
         total_loss = 0.0
         num_batches = len(self.train_loader)
         
-        pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch} [Train]")
+        pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch} [Train]", leave=False)
         
-        for batch in pbar:
+        for batch_idx, batch in enumerate(pbar):
             images = batch['image'].to(self.device)
             masks = batch['mask'].to(self.device)
             
             # Forward pass with mixed precision
-            self.optimizer.zero_grad()
-            
             if self.use_amp:
                 with autocast():
                     outputs = self.model(images)
                     loss = self.loss_fn(outputs, masks)
+                    # Scale loss for gradient accumulation
+                    loss = loss / self.gradient_accumulation_steps
                 
                 # Backward pass
                 self.scaler.scale(loss).backward()
                 
-                # Gradient clipping
-                if self.gradient_clip_val > 0:
-                    self.scaler.unscale_(self.optimizer)
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(),
-                        self.gradient_clip_val
-                    )
-                
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
+                # Optimizer step every N batches
+                if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
+                    # Gradient clipping
+                    if self.gradient_clip_val > 0:
+                        self.scaler.unscale_(self.optimizer)
+                        torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(),
+                            self.gradient_clip_val
+                        )
+                    
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    self.optimizer.zero_grad()
+                    
+                    # Update scheduler per step for OneCycleLR
+                    if self.scheduler is not None:
+                        from torch.optim.lr_scheduler import OneCycleLR
+                        if isinstance(self.scheduler, OneCycleLR):
+                            self.scheduler.step()
             else:
                 outputs = self.model(images)
                 loss = self.loss_fn(outputs, masks)
+                # Scale loss for gradient accumulation
+                loss = loss / self.gradient_accumulation_steps
                 
                 # Backward pass
                 loss.backward()
                 
-                # Gradient clipping
-                if self.gradient_clip_val > 0:
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(),
-                        self.gradient_clip_val
-                    )
-                
-                self.optimizer.step()
+                # Optimizer step every N batches
+                if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
+                    # Gradient clipping
+                    if self.gradient_clip_val > 0:
+                        torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(),
+                            self.gradient_clip_val
+                        )
+                    
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+                    
+                    # Update scheduler per step for OneCycleLR
+                    if self.scheduler is not None:
+                        from torch.optim.lr_scheduler import OneCycleLR
+                        if isinstance(self.scheduler, OneCycleLR):
+                            self.scheduler.step()
             
-            # Update metrics
-            total_loss += loss.item()
+            # Update metrics (use unscaled loss for tracking)
+            total_loss += loss.item() * self.gradient_accumulation_steps
             self.metrics_tracker.update_train(outputs.detach(), masks)
             
             # Update progress bar
             pbar.set_postfix({
-                'loss': f'{loss.item():.4f}',
+                'loss': f'{loss.item() * self.gradient_accumulation_steps:.4f}',
                 'avg_loss': f'{total_loss / (pbar.n + 1):.4f}'
             })
         
@@ -226,7 +249,7 @@ class Trainer:
         total_loss = 0.0
         num_batches = len(self.val_loader)
         
-        pbar = tqdm(self.val_loader, desc=f"Epoch {self.current_epoch} [Val]")
+        pbar = tqdm(self.val_loader, desc=f"Epoch {self.current_epoch} [Val]", leave=False)
         
         for batch in pbar:
             images = batch['image'].to(self.device)
@@ -350,11 +373,13 @@ class Trainer:
                 learning_rate=current_lr
             )
             
-            # Update learning rate
+            # Update learning rate (OneCycleLR steps per batch, others step per epoch)
             if self.scheduler:
+                from torch.optim.lr_scheduler import OneCycleLR
                 if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                     self.scheduler.step(val_metrics['mean_iou'])
-                else:
+                elif not isinstance(self.scheduler, OneCycleLR):
+                    # OneCycleLR already stepped in train_epoch
                     self.scheduler.step()
             
             # Check if best model

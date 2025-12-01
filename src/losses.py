@@ -257,9 +257,9 @@ def create_loss_function(
         return CombinedLoss(
             num_classes=num_classes,
             class_weights=class_weights,
-            ce_weight=kwargs.get('ce_weight', 1.0),
-            dice_weight=kwargs.get('dice_weight', 1.0),
-            focal_weight=kwargs.get('focal_weight', 0.0),
+            ce_weight=kwargs.get('ce_weight', 0.5),      # Reduced CE weight
+            dice_weight=kwargs.get('dice_weight', 1.0),  # Dice handles imbalance naturally
+            focal_weight=kwargs.get('focal_weight', 1.5),  # Enable Focal Loss for class imbalance
             focal_gamma=kwargs.get('focal_gamma', 2.0),
             ignore_index=kwargs.get('ignore_index', -1)
         )

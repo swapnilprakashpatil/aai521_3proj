@@ -110,16 +110,23 @@ class FloodDataset(Dataset):
             for cls, count in class_dist.items():
                 self.class_counts[int(cls)] += count
         
-        # Calculate class weights (inverse frequency)
+        # Calculate class weights using square-root inverse frequency
+        # This is less aggressive than inverse frequency and prevents extreme weights
         total_pixels = self.class_counts.sum()
         self.class_weights = np.zeros(self.num_classes, dtype=np.float32)
         
         for i in range(self.num_classes):
             if self.class_counts[i] > 0:
-                # Inverse frequency normalized
-                self.class_weights[i] = total_pixels / (self.num_classes * self.class_counts[i])
+                # Square root of inverse frequency (more stable for extreme imbalance)
+                self.class_weights[i] = np.sqrt(total_pixels / self.class_counts[i])
             else:
-                self.class_weights[i] = 0.0
+                # For classes with 0 samples, use small weight
+                self.class_weights[i] = 1.0
+        
+        # Normalize weights so they sum to num_classes (keeps CE loss scale similar)
+        weight_sum = self.class_weights.sum()
+        if weight_sum > 0:
+            self.class_weights = (self.class_weights / weight_sum) * self.num_classes
         
         print(f"\nClass distribution ({self.split}):")
         for i in range(self.num_classes):
