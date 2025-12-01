@@ -192,10 +192,10 @@ class Trainer:
         total_loss = 0.0
         num_batches = len(self.train_loader)
         
-        # Disable inner progress bar to prevent deadlock with num_workers=0 on Windows
-        # pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch} [Train]", leave=False)
+        # Progress bar for training batches
+        pbar = tqdm(self.train_loader, desc="  Training", leave=False, ncols=100)
         
-        for batch_idx, batch in enumerate(self.train_loader):
+        for batch_idx, batch in enumerate(pbar):
             images = batch['image'].to(self.device)
             masks = batch['mask'].to(self.device)
             
@@ -264,17 +264,11 @@ class Trainer:
             gpu_alloc, gpu_reserved, gpu_total = get_gpu_memory_usage()
             ram_used, ram_total, ram_percent = get_ram_usage()
             
-            # Update progress bar with resource usage (disabled to prevent deadlock)
-            # postfix = {
-            #     'loss': f'{loss.item() * self.gradient_accumulation_steps:.4f}',
-            #     'avg_loss': f'{total_loss / (batch_idx + 1):.4f}'
-            # }
-            # 
-            # if torch.cuda.is_available():
-            #     postfix['GPU'] = f'{gpu_alloc:.1f}/{gpu_total:.1f}GB'
-            # postfix['RAM'] = f'{ram_percent:.0f}%'
-            # 
-            # pbar.set_postfix(postfix)
+            # Update progress bar
+            pbar.set_postfix({
+                'loss': f'{loss.item() * self.gradient_accumulation_steps:.4f}',
+                'avg': f'{total_loss / (batch_idx + 1):.4f}'
+            })
         
         avg_loss = total_loss / num_batches
         return avg_loss
@@ -293,10 +287,10 @@ class Trainer:
         total_loss = 0.0
         num_batches = len(self.val_loader)
         
-        # Disable inner progress bar to prevent deadlock with num_workers=0 on Windows
-        # pbar = tqdm(self.val_loader, desc=f"Epoch {self.current_epoch} [Val]", leave=False)
+        # Progress bar for validation batches
+        pbar = tqdm(self.val_loader, desc="  Validation", leave=False, ncols=100)
         
-        for batch in self.val_loader:
+        for batch in pbar:
             images = batch['image'].to(self.device)
             masks = batch['mask'].to(self.device)
             
@@ -317,17 +311,10 @@ class Trainer:
             gpu_alloc, gpu_reserved, gpu_total = get_gpu_memory_usage()
             ram_used, ram_total, ram_percent = get_ram_usage()
             
-            # Update progress bar with resource usage (disabled to prevent deadlock)
-            # postfix = {
-            #     'loss': f'{loss.item():.4f}',
-            #     'avg_loss': f'{total_loss / (batch_idx + 1):.4f}'
-            # }
-            # 
-            # if torch.cuda.is_available():
-            #     postfix['GPU'] = f'{gpu_alloc:.1f}/{gpu_total:.1f}GB'
-            # postfix['RAM'] = f'{ram_percent:.0f}%'
-            # 
-            # pbar.set_postfix(postfix)
+            # Update progress bar
+            pbar.set_postfix({
+                'loss': f'{loss.item():.4f}'
+            })
         
         avg_loss = total_loss / num_batches
         return avg_loss
@@ -412,12 +399,14 @@ class Trainer:
         # Track all epoch metrics for final summary
         epoch_summaries = []
         
-        # Create progress bar for all epochs
-        epoch_pbar = tqdm(range(start_epoch, num_epochs + 1), desc="Training Progress", unit="epoch", leave=True, ncols=120)
-        
-        for epoch in epoch_pbar:
+        # Simple loop without overall progress bar (show per-epoch progress instead)
+        for epoch in range(start_epoch, num_epochs + 1):
             self.current_epoch = epoch
             epoch_start = time.time()
+            
+            print(f"\n{'='*70}")
+            print(f"Epoch [{epoch}/{num_epochs}]")
+            print(f"{'='*70}")
             
             # Get resource usage at start of epoch
             cpu_percent = psutil.cpu_percent(interval=0.1)
