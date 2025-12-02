@@ -142,7 +142,7 @@ class GPUManager:
     def monitor_memory(
         self, 
         duration: int = 3600, 
-        interval: int = 10,
+        interval: int = 30,
         stop_on_error: bool = True
     ):
         """
