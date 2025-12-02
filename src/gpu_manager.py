@@ -122,11 +122,7 @@ class GPUManager:
         stats = self.get_memory_stats()
         
         if self.gpu_available:
-            print(f"\nGPU Memory Usage:")
-            print(f"  Allocated: {stats['allocated_gb']:.2f} GB")
-            print(f"  Reserved:  {stats['reserved_gb']:.2f} GB")
-            print(f"  Free:      {stats['free_gb']:.2f} GB")
-            print(f"  Total:     {stats['total_gb']:.2f} GB")
+            print(f"\nGPU Memory Usage: Allocated: {stats['allocated_gb']:.2f} GB, Reserved: {stats['reserved_gb']:.2f} GB, Free: {stats['free_gb']:.2f} GB, Total: {stats['total_gb']:.2f} GB")
         else:
             print("GPU not available - running on CPU")
     
@@ -176,12 +172,7 @@ class GPUManager:
                     
                     print(f"GPU Memory Monitor - Elapsed: {elapsed:.0f}s / {duration}s")
                     print("="*60)
-                    print(f"Device: {self.gpu_name}")
-                    print(f"Allocated: {stats['allocated_gb']:.2f} GB")
-                    print(f"Reserved:  {stats['reserved_gb']:.2f} GB")
-                    print(f"Free:      {stats['free_gb']:.2f} GB")
-                    print(f"Total:     {stats['total_gb']:.2f} GB")
-                    print(f"Usage:     {(stats['allocated_gb']/stats['total_gb'])*100:.1f}%")
+                    print(f"Device: {self.gpu_name}, Allocated: {stats['allocated_gb']:.2f} GB, Reserved: {stats['reserved_gb']:.2f} GB, Free: {stats['free_gb']:.2f} GB, Total: {stats['total_gb']:.2f} GB, Usage: {(stats['allocated_gb']/stats['total_gb'])*100:.1f}%")
                     print("="*60)
                     print(f"Next update in {interval} seconds... (Ctrl+C to stop)")
                     
