@@ -79,7 +79,7 @@ NUM_CLASSES = 7  # Classes 0-6
 # Patch extraction
 PATCH_SIZE = 512  # Size for patch extraction (optimal for CV segmentation)
 PATCH_OVERLAP = 128  # Overlap between patches to ensure boundary coverage
-MIN_FLOOD_PIXELS = 2621  # Minimum flooded pixels to consider a patch "flood-positive" (~1% of 512x512 patch)
+MIN_FLOOD_PIXELS = 500  # FIXED: Lowered from 2621 to 500 (~0.19% of 512x512 patch) - more sensitive to small floods
 
 # Normalization settings
 # Based on typical satellite imagery ranges
@@ -92,10 +92,11 @@ CLAHE_CLIP_LIMIT = 2.0
 CLAHE_TILE_GRID_SIZE = (8, 8)
 
 # Advanced preprocessing (cloud removal, deblurring, geometric correction)
-APPLY_ADVANCED_PREPROCESSING = True
-REMOVE_CLOUDS = True
-APPLY_DEBLUR = True
-CORRECT_GEOMETRY = True
+# DISABLED: These steps can hurt performance by removing flood pixels and adding artifacts
+APPLY_ADVANCED_PREPROCESSING = False  # DISABLED - may remove flood data and add artifacts
+REMOVE_CLOUDS = False  # May incorrectly remove bright flood water (sun reflection)
+APPLY_DEBLUR = False   # Unnecessary for satellite data, may introduce noise
+CORRECT_GEOMETRY = False  # Unnecessary - satellite images already georeferenced
 
 # Class balancing
 # Based on EDA: ~20-22% flooded, ~78-80% non-flooded
