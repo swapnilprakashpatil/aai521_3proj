@@ -18,12 +18,6 @@ TRAIN_PATH = BASE_PATH / 'train'
 GERMANY_TRAIN = TRAIN_PATH / 'Germany_Training_Public'
 LOUISIANA_EAST_TRAIN = TRAIN_PATH / 'Louisiana-East_Training_Public'
 
-# Training region selection
-# Set to None to use all regions, or list specific regions to use
-# Example: SELECTED_REGIONS = ['Louisiana-East_Training_Public']
-SELECTED_REGIONS = ['Louisiana-East_Training_Public']  # Skip Germany - faster, more relevant to Louisiana-West test set
-# SELECTED_REGIONS = None  # Uncomment to use all available regions
-
 # Test data paths
 TEST_PATH = BASE_PATH / 'test'
 LOUISIANA_WEST_TEST = TEST_PATH
@@ -85,7 +79,12 @@ NUM_CLASSES = 7  # Classes 0-6
 # Patch extraction
 PATCH_SIZE = 512  # Size for patch extraction (optimal for CV segmentation)
 PATCH_OVERLAP = 128  # Overlap between patches to ensure boundary coverage
-MIN_FLOOD_PIXELS = 100  # AGGRESSIVE: Lowered to 100 (~0.04% of 512x512 patch) - capture even small flood areas
+MIN_FLOOD_PIXELS = 50  # ULTRA-AGGRESSIVE: Lowered to 50 (~0.02% of 512x512 patch) - capture all flood areas
+
+# Oversampling configuration for class balance
+OVERSAMPLE_TARGET_RATIO = 0.5  # Target 50% flood patches (was 40%)
+OVERSAMPLE_MAX_DUPLICATES = 30  # Maximum duplications per flood patch (was 20)
+USE_WEIGHTED_SAMPLING = True  # Enable weighted random sampling during training
 
 # Normalization settings
 # Based on typical satellite imagery ranges
@@ -104,26 +103,34 @@ REMOVE_CLOUDS = False  # May incorrectly remove bright flood water (sun reflecti
 APPLY_DEBLUR = False   # Unnecessary for satellite data, may introduce noise
 CORRECT_GEOMETRY = False  # Unnecessary - satellite images already georeferenced
 
-# Class balancing - OPTIMIZED FOR 80% IoU TARGET
-# With aggressive oversampling targeting 40% flood pixels, we need higher weights for minority classes
+# Class balancing - OPTIMIZED FOR 60%+ IoU TARGET
+# With aggressive oversampling targeting 50% flood pixels, we need higher weights for minority classes
 # Formula: weight = (1 / frequency) * adjustment_factor
 CLASS_WEIGHTS = {
-    0: 0.5,   # background (abundant, reduce weight to prevent bias)
-    1: 2.0,   # no-damage (buildings - moderate importance)
-    2: 4.0,   # minor-damage (critical for flood detection)
-    3: 6.0,   # major-damage (very rare, highest weight)
-    4: 8.0,   # destroyed (extremely rare, maximum weight)
-    5: 5.0,   # un-classified (rare, high weight)
-    6: 1.5    # non-flooded-road (moderate frequency)
+    0: 0.3,   # background (abundant, heavily reduce weight to prevent bias)
+    1: 2.5,   # no-damage (buildings - moderate importance)
+    2: 5.0,   # minor-damage (critical for flood detection - INCREASED)
+    3: 8.0,   # major-damage (very rare, highest weight - INCREASED)
+    4: 10.0,  # destroyed (extremely rare, maximum weight - INCREASED)
+    5: 6.0,   # un-classified (rare, high weight - INCREASED)
+    6: 2.0    # non-flooded-road (moderate frequency)
 }
 
+# Focal loss parameters for hard example mining
+USE_FOCAL_LOSS = True
+FOCAL_ALPHA = 0.25  # Balancing factor
+FOCAL_GAMMA = 2.0   # Focusing parameter (higher = focus more on hard examples)
+
 # Data augmentation probabilities
-AUG_HORIZONTAL_FLIP_PROB = 0.5
-AUG_VERTICAL_FLIP_PROB = 0.5
-AUG_ROTATE_PROB = 0.5
-AUG_BRIGHTNESS_CONTRAST_PROB = 0.3
-AUG_GAUSSIAN_NOISE_PROB = 0.2
-AUG_BLUR_PROB = 0.15
+# INCREASED for flood-positive samples to improve generalization
+AUG_HORIZONTAL_FLIP_PROB = 0.7  # Increased from 0.5
+AUG_VERTICAL_FLIP_PROB = 0.7    # Increased from 0.5
+AUG_ROTATE_PROB = 0.6           # Increased from 0.5
+AUG_BRIGHTNESS_CONTRAST_PROB = 0.5  # Increased from 0.3
+AUG_GAUSSIAN_NOISE_PROB = 0.3   # Increased from 0.2
+AUG_BLUR_PROB = 0.2             # Increased from 0.15
+AUG_ELASTIC_TRANSFORM_PROB = 0.3  # NEW: Elastic deformation for flood patterns
+AUG_GRID_DISTORTION_PROB = 0.2    # NEW: Grid distortion for geometric variation
 
 # Quality control thresholds
 MIN_VALID_PIXELS_RATIO = 0.5  # Minimum ratio of valid (non-zero) pixels

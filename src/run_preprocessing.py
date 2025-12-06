@@ -24,8 +24,7 @@ from config import (
     TRAIN_RATIO, VAL_RATIO, TEST_RATIO,
     APPLY_CLAHE, CLAHE_CLIP_LIMIT, CLAHE_TILE_GRID_SIZE,
     MIN_VALID_PIXELS_RATIO, MAX_CLOUD_COVERAGE,
-    APPLY_ADVANCED_PREPROCESSING, REMOVE_CLOUDS, APPLY_DEBLUR, CORRECT_GEOMETRY,
-    SELECTED_REGIONS
+    APPLY_ADVANCED_PREPROCESSING, REMOVE_CLOUDS, APPLY_DEBLUR, CORRECT_GEOMETRY
 )
 from data_loader import DatasetLoader, load_tile_data
 from preprocessing import ImagePreprocessor, PatchExtractor, calculate_dataset_statistics
@@ -807,24 +806,6 @@ def main():
     print(f"\nDiscovered {len(training_regions)} training region(s):")
     for region_path, region_name in training_regions:
         print(f"  - {region_name}: {region_path}")
-    
-    # Filter regions if SELECTED_REGIONS is configured
-    if SELECTED_REGIONS is not None:
-        filtered_regions = [(path, name) for path, name in training_regions 
-                           if name in SELECTED_REGIONS]
-        if filtered_regions:
-            print(f"\nUsing selected regions only:")
-            for region_path, region_name in filtered_regions:
-                print(f" {region_name}")
-            skipped = [name for _, name in training_regions if name not in SELECTED_REGIONS]
-            if skipped:
-                print(f"\nSkipping regions:")
-                for name in skipped:
-                    print(f" {name}")
-            training_regions = filtered_regions
-        else:
-            print(f"\nWARNING: SELECTED_REGIONS configured but no matches found!")
-            print(f"Using all discovered regions instead.")
     
     # Process all discovered training regions
     all_train_metadata = []

@@ -451,19 +451,20 @@ class PatchExtractor:
             flood_patches = [p for p in patches if p.get('is_flood_positive', False)]
             non_flood_patches = [p for p in patches if not p.get('is_flood_positive', False)]
             
-            # AGGRESSIVE oversampling to achieve 30-50% flood class representation
+            # ULTRA-AGGRESSIVE oversampling to achieve 50%+ flood class representation
             # Target: Balance flood and non-flood patches for better training
             if len(flood_patches) > 0 and len(non_flood_patches) > 0:
                 # Calculate how many times to duplicate flood patches
-                # Target ratio: 40% flood, 60% non-flood
-                target_flood_ratio = 0.4
+                # Target ratio: 50% flood, 50% non-flood for maximum balance
+                from config import OVERSAMPLE_TARGET_RATIO, OVERSAMPLE_MAX_DUPLICATES
+                target_flood_ratio = OVERSAMPLE_TARGET_RATIO
                 current_flood_ratio = len(flood_patches) / len(patches)
                 
                 if current_flood_ratio < target_flood_ratio:
                     # Calculate required duplicates to reach target ratio
                     n_duplicates = int((target_flood_ratio * len(patches) - len(flood_patches)) / 
                                       (len(flood_patches) * (1 - target_flood_ratio)))
-                    n_duplicates = max(1, min(n_duplicates, 20))
+                    n_duplicates = max(1, min(n_duplicates, OVERSAMPLE_MAX_DUPLICATES))
                     
                     total_after = len(patches) + (n_duplicates * len(flood_patches))
                     flood_after = len(flood_patches) * (n_duplicates + 1)
@@ -682,14 +683,14 @@ def validate_class_balance(processed_dir: Path, num_classes: int = 7) -> Dict[st
     
     if not train_dir.exists():
         result['error'] = "Processed data not found"
-        print(f"✗ {result['error']}")
+        print(f"[ERROR] {result['error']}")
         return result
     
     train_masks = sorted((train_dir / 'masks').glob('*.npy'))
     
     if len(train_masks) == 0:
         result['error'] = "No mask files found"
-        print(f"✗ {result['error']}")
+        print(f"[ERROR] {result['error']}")
         return result
     
     # Calculate patch-level statistics (critical for oversampling validation)
@@ -732,15 +733,19 @@ def validate_class_balance(processed_dir: Path, num_classes: int = 7) -> Dict[st
             result['missing_classes'].append(class_names[cls])
     
     # Quality assessment based on PATCH-LEVEL distribution (what models see during training)
-    if patch_flood_pct < 20:
+    # Updated thresholds for 60%+ target with 50% oversampling
+    if patch_flood_pct < 30:
         result['quality'] = "POOR"
-        status_icon = "POOR"
-    elif patch_flood_pct < 35:
+        status_icon = "[POOR]"
+    elif patch_flood_pct < 45:
         result['quality'] = "ACCEPTABLE"
-        status_icon = "ACCEPTABLE"
-    else:
+        status_icon = "[ACCEPTABLE]"
+    elif patch_flood_pct < 55:
         result['quality'] = "GOOD"
-        status_icon = "GOOD"
+        status_icon = "[GOOD]"
+    else:
+        result['quality'] = "EXCELLENT"
+        status_icon = "[EXCELLENT]"
     
     # Display compact results
     print(f"\n{status_icon} Quality: {result['quality']}")
@@ -753,13 +758,15 @@ def validate_class_balance(processed_dir: Path, num_classes: int = 7) -> Dict[st
                 if result['class_distribution'][name]['percentage'] > 0.01]
     print(f"  Classes: {', '.join(non_zero)}")
     
-    # Expected performance based on patch distribution
+    # Expected performance based on patch distribution with new thresholds
     if result['quality'] == "POOR":
-        print(f"  Expected IoU: 20-35% - Need more oversampling")
+        print(f"  Expected IoU: 20-40% - Need more oversampling")
     elif result['quality'] == "ACCEPTABLE":
-        print(f"  Expected IoU: 40-55% - Moderate performance")
-    else:
-        print(f"  Expected IoU: 60-80% - Ready!")
+        print(f"  Expected IoU: 45-60% - Increase oversampling for 60%+ target")
+    elif result['quality'] == "GOOD":
+        print(f"  Expected IoU: 60-75% - Good balance for target")
+    else:  # EXCELLENT
+        print(f"  Expected IoU: 70-85% - Excellent balance")
     
     if result['missing_classes']:
         print(f"  Missing: {', '.join(result['missing_classes'])}")
