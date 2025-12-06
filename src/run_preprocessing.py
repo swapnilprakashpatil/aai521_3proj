@@ -815,12 +815,12 @@ def main():
         if filtered_regions:
             print(f"\nUsing selected regions only:")
             for region_path, region_name in filtered_regions:
-                print(f"  ✓ {region_name}")
+                print(f" {region_name}")
             skipped = [name for _, name in training_regions if name not in SELECTED_REGIONS]
             if skipped:
                 print(f"\nSkipping regions:")
                 for name in skipped:
-                    print(f"  ✗ {name}")
+                    print(f" {name}")
             training_regions = filtered_regions
         else:
             print(f"\nWARNING: SELECTED_REGIONS configured but no matches found!")

@@ -734,13 +734,13 @@ def validate_class_balance(processed_dir: Path, num_classes: int = 7) -> Dict[st
     # Quality assessment based on PATCH-LEVEL distribution (what models see during training)
     if patch_flood_pct < 20:
         result['quality'] = "POOR"
-        status_icon = "✗"
+        status_icon = "POOR"
     elif patch_flood_pct < 35:
         result['quality'] = "ACCEPTABLE"
-        status_icon = "⚠"
+        status_icon = "ACCEPTABLE"
     else:
         result['quality'] = "GOOD"
-        status_icon = "✓"
+        status_icon = "GOOD"
     
     # Display compact results
     print(f"\n{status_icon} Quality: {result['quality']}")
