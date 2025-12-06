@@ -263,7 +263,8 @@ def compute_csv_summary_statistics(csv_analysis: Dict) -> Dict:
             
             # Aggregate road length statistics
             if 'length_m' in df_ref.columns:
-                valid_lengths = df_ref['length_m'].dropna()
+                # Convert to numeric, handling string values
+                valid_lengths = pd.to_numeric(df_ref['length_m'], errors='coerce').dropna()
                 if len(valid_lengths) > 0:
                     if 'all_lengths' not in csv_summary['road_length_statistics']:
                         csv_summary['road_length_statistics']['all_lengths'] = []

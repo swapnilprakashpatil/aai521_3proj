@@ -745,20 +745,21 @@ def plot_csv_metadata_analysis(csv_analysis: Dict) -> plt.Figure:
             df_ref = data['reference']['dataframe']
             if 'flooded' in df_ref.columns:
                 # Convert to numeric, handling string values
-                flooded_numeric = pd.to_numeric(df_ref['flooded'], errors='coerce')
-                flooded_counts = flooded_numeric.value_counts()
-                labels = ['Flooded' if k == 1 else 'Not Flooded' for k in flooded_counts.index]
-                colors = ['#EF476F', '#118AB2']
-                wedges, texts, autotexts = ax2.pie(flooded_counts, labels=labels, autopct='%1.1f%%',
-                                                    colors=colors, startangle=90)
-                for autotext in autotexts:
-                    autotext.set_color('white')
-                    autotext.set_fontweight('bold')
-                    autotext.set_fontsize(11)
-                ax2.set_title(f'Flood Status Distribution - {dataset_name}', 
-                             fontsize=12, fontweight='bold')
-                flood_data_available = True
-                break
+                flooded_numeric = pd.to_numeric(df_ref['flooded'], errors='coerce').dropna()
+                if len(flooded_numeric) > 0:
+                    flooded_counts = flooded_numeric.value_counts()
+                    labels = ['Flooded' if k == 1 else 'Not Flooded' for k in flooded_counts.index]
+                    colors = ['#EF476F', '#118AB2']
+                    wedges, texts, autotexts = ax2.pie(flooded_counts, labels=labels, autopct='%1.1f%%',
+                                                        colors=colors, startangle=90)
+                    for autotext in autotexts:
+                        autotext.set_color('white')
+                        autotext.set_fontweight('bold')
+                        autotext.set_fontsize(11)
+                    ax2.set_title(f'Flood Status Distribution - {dataset_name}', 
+                                 fontsize=12, fontweight='bold')
+                    flood_data_available = True
+                    break
     
     if not flood_data_available:
         ax2.text(0.5, 0.5, 'No flood status data available', 
@@ -977,6 +978,15 @@ def plot_temporal_change_detection(datasets: List[Tuple[str, Path]]) -> Tuple[pl
                 axes[row, 1].axis('off')
                 
                 # 3. Absolute difference
+                # Resize images to match if they have different shapes
+                if pre_img.shape != post_img.shape:
+                    from skimage.transform import resize
+                    min_h = min(pre_img.shape[0], post_img.shape[0])
+                    min_w = min(pre_img.shape[1], post_img.shape[1])
+                    target_shape = (min_h, min_w) if len(pre_img.shape) == 2 else (min_h, min_w, pre_img.shape[2])
+                    pre_img = resize(pre_img, target_shape, preserve_range=True)
+                    post_img = resize(post_img, target_shape, preserve_range=True)
+                
                 abs_diff = np.abs(post_img - pre_img)
                 if len(abs_diff.shape) == 3:
                     abs_diff_gray = abs_diff.mean(axis=2)
