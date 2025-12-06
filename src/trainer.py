@@ -399,14 +399,14 @@ class Trainer:
         # Track all epoch metrics for final summary
         epoch_summaries = []
         
-        # Simple loop without overall progress bar (show per-epoch progress instead)
+        # Print progress header
+        print(f"{'Epoch':<7} {'TrLoss':<8} {'VaLoss':<8} {'TrIoU':<7} {'VaIoU':<7} {'Time(s)':<8} {'Status'}")
+        print(f"{'-'*70}")
+        
+        # Simple loop without overall progress bar (show minimal per-epoch progress)
         for epoch in range(start_epoch, num_epochs + 1):
             self.current_epoch = epoch
             epoch_start = time.time()
-            
-            print(f"\n{'='*70}")
-            print(f"Epoch [{epoch}/{num_epochs}]")
-            print(f"{'='*70}")
             
             # Get resource usage at start of epoch
             cpu_percent = psutil.cpu_percent(interval=0.1)
@@ -420,13 +420,13 @@ class Trainer:
             # Get learning rate
             current_lr = self.optimizer.param_groups[0]['lr']
             
-            # Log metrics (with per-epoch print)
+            # Log metrics (suppress per-epoch summary)
             train_metrics, val_metrics = self.metrics_tracker.log_epoch(
                 epoch=epoch,
                 train_loss=train_loss,
                 val_loss=val_loss,
                 learning_rate=current_lr,
-                print_summary=True  # Show individual epoch summaries
+                print_summary=False  # Suppress verbose output
             )
             
             # Update learning rate (OneCycleLR steps per batch, others step per epoch)
@@ -444,8 +444,8 @@ class Trainer:
                 self.best_val_iou = val_metrics['mean_iou']
                 self.best_epoch = epoch
             
-            # Save checkpoint
-            self.save_checkpoint(is_best=is_best, filename=f'checkpoint_epoch_{epoch}.pth', silent=False)
+            # Save checkpoint (silently unless best)
+            self.save_checkpoint(is_best=is_best, filename=f'checkpoint_epoch_{epoch}.pth', silent=not is_best)
             
             epoch_time = time.time() - epoch_start
             
@@ -454,14 +454,9 @@ class Trainer:
             ram_used, ram_total, ram_percent = get_ram_usage()
             cpu_percent_end = psutil.cpu_percent(interval=0.1)
             
-            # Print resource usage
-            resource_info = f"  Resources: "
-            if torch.cuda.is_available():
-                resource_info += f"GPU: {gpu_alloc:.1f}/{gpu_total:.0f}GB | "
-            resource_info += f"RAM: {ram_percent:.0f}% | CPU: {cpu_percent_end:.0f}%"
-            print(resource_info)
-            print(f"  Epoch time: {epoch_time:.2f}s")
-            print()
+            # Print condensed epoch summary (one line)
+            status = "⭐ BEST" if is_best else ""
+            print(f"{epoch}/{num_epochs:<4} {train_loss:<8.4f} {val_loss:<8.4f} {train_metrics['mean_iou']:<7.4f} {val_metrics['mean_iou']:<7.4f} {epoch_time:<8.1f} {status}")
             
             # Store epoch summary
             epoch_summaries.append({
