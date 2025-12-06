@@ -469,8 +469,6 @@ class PatchExtractor:
                     flood_after = len(flood_patches) * (n_duplicates + 1)
                     final_flood_ratio = flood_after / total_after
                     
-                    print(f"  Oversampling: {len(flood_patches)} flood patches x{n_duplicates+1} → {final_flood_ratio*100:.1f}% flood ({total_after} total)")
-                    
                     for _ in range(n_duplicates):
                         patches.extend(flood_patches)
                     
@@ -626,8 +624,6 @@ def cleanup_processed_data(processed_dir: Path) -> Dict[str, any]:
                 if subdir_path.exists():
                     result['total_files'] += len(list(subdir_path.glob('*')))
     
-    print(f"Deleting {result['total_files']} files...")
-    
     try:
         shutil.rmtree(processed_dir)
         
@@ -643,16 +639,13 @@ def cleanup_processed_data(processed_dir: Path) -> Dict[str, any]:
         if processed_dir.exists():
             remaining = sum(1 for _ in processed_dir.rglob('*') if _.is_file())
             result['error'] = f"Directory still exists with {remaining} files"
-            print(f"WARNING: {result['error']}")
         else:
             result['deleted'] = True
-            print("SUCCESS: Deleted successfully")
+            print(f"✓ Cleanup: Deleted {result['total_files']} files")
             
     except Exception as e:
         result['error'] = str(e)
-        print(f"ERROR: {e}")
-    
-    print("="*80)
+        print(f"✗ Cleanup failed: {e}")
     
     return result
 
@@ -681,25 +674,23 @@ def validate_class_balance(processed_dir: Path, num_classes: int = 7) -> Dict[st
         'error': None
     }
     
-    print("="*80)
+    print("\n" + "="*60)
     print("CLASS BALANCE VALIDATION")
-    print("="*80)
+    print("="*60)
     
     train_dir = processed_dir / 'train'
     
     if not train_dir.exists():
         result['error'] = "Processed data not found"
-        print(f"\nERROR: {result['error']}")
+        print(f"✗ {result['error']}")
         return result
     
     train_masks = sorted((train_dir / 'masks').glob('*.npy'))
     
     if len(train_masks) == 0:
         result['error'] = "No mask files found"
-        print(f"\nERROR: {result['error']}")
+        print(f"✗ {result['error']}")
         return result
-    
-    print(f"Analyzing {len(train_masks)} training masks...")
     
     # Calculate class distribution
     class_counts = torch.zeros(num_classes)
@@ -730,41 +721,39 @@ def validate_class_balance(processed_dir: Path, num_classes: int = 7) -> Dict[st
         if class_counts[cls] == 0:
             result['missing_classes'].append(class_names[cls])
     
-    # Display results
-    print("\n" + "="*80)
-    print("Results:")
-    print(f"  Background: {bg_pct:.2f}% | Flood: {flood_pct:.2f}%")
-    
-    for cls, name in enumerate(class_names):
-        info = result['class_distribution'][name]
-        if info['percentage'] > 0.01:
-            print(f"  Class {cls} ({name}): {info['percentage']:.2f}%")
-    
     # Quality assessment
     if bg_pct > 90:
         result['quality'] = "POOR"
-        status = "FAILED"
+        status_icon = "✗"
     elif bg_pct > 70:
         result['quality'] = "ACCEPTABLE"
-        status = "WARNING"
+        status_icon = "⚠"
     else:
         result['quality'] = "GOOD"
-        status = "PASSED"
+        status_icon = "✓"
     
-    print(f"\nQuality: {result['quality']} ({status})")
+    # Display compact results
+    print(f"\n{status_icon} Quality: {result['quality']}")
+    print(f"  Background: {bg_pct:.1f}% | Flood: {flood_pct:.1f}%")
     
-    if result['missing_classes']:
-        print(f"Missing: {', '.join(result['missing_classes'])}")
+    # Show only non-zero classes
+    non_zero = [f"{name}({result['class_distribution'][name]['percentage']:.1f}%)" 
+                for cls, name in enumerate(class_names) 
+                if result['class_distribution'][name]['percentage'] > 0.01]
+    print(f"  Classes: {', '.join(non_zero)}")
     
     # Expected performance
     if result['quality'] == "POOR":
-        print(f"Expected Max IoU: 20-35% - DO NOT TRAIN!")
+        print(f"  Expected IoU: 20-35% - DO NOT TRAIN")
     elif result['quality'] == "ACCEPTABLE":
-        print(f"Expected Max IoU: 40-55% - Suboptimal")
+        print(f"  Expected IoU: 40-55% - Suboptimal")
     else:
-        print(f"Expected Max IoU: 60-80% - Ready for training!")
+        print(f"  Expected IoU: 60-80% - Ready!")
     
-    print("="*80)
+    if result['missing_classes']:
+        print(f"  Missing: {', '.join(result['missing_classes'])}")
+    
+    print("="*60)
     
     return result
 

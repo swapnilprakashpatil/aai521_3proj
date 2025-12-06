@@ -284,21 +284,13 @@ class DataPreprocessor:
             List of metadata dictionaries for all patches
         """
         print(f"\n{'='*60}")
-        print(f"Processing region: {region_name}")
-        print(f"{'='*60}")
+        print(f"Processing: {region_name}")
         
         # Initialize loader
         loader = DatasetLoader(region_path, region_name)
         tile_list = loader.get_tile_list()
         
-        print(f"Found {len(tile_list)} tiles")
-        print(f"Using {self.max_workers} parallel workers")
-        
-        # Get flood statistics
-        flood_stats = loader.get_flood_statistics()
-        print(f"\nFlood statistics:")
-        for key, value in flood_stats.items():
-            print(f"  {key}: {value}")
+        print(f"  Tiles: {len(tile_list)} | Workers: {self.max_workers}")
             
         region_metadata = []
         self.stats['total_tiles'] += len(tile_list)
@@ -335,8 +327,9 @@ class DataPreprocessor:
             completed = 0
             total = len(tile_list)
             
-            # Create progress bar
-            pbar = tqdm(total=total, desc=f"Processing {region_name}", unit="tile")
+            # Create progress bar with compact display
+            pbar = tqdm(total=total, desc=f"  {region_name}", unit="tiles", 
+                       bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]')
             
             # Collect results as they complete
             for future in as_completed(future_to_tile):
@@ -356,19 +349,16 @@ class DataPreprocessor:
                         self.stats['failed_tiles'] += 1
                         self.stats['quality_failed'] += tile_stats['quality_failed']
                         
-                except Exception as e:
-                    print(f"\nError processing {tile_name}: {e}")
+                except Exception:
                     self.stats['failed_tiles'] += 1
                 
-                # Update progress
                 pbar.update(1)
-                pbar.set_postfix({
-                    'progress': f'{(completed/total)*100:.1f}%',
-                    'success': self.stats['processed_tiles'],
-                    'failed': self.stats['failed_tiles']
-                })
             
             pbar.close()
+            
+            # Show region summary
+            flood_pct = (self.stats['flood_positive_patches'] / self.stats['total_patches'] * 100) if self.stats['total_patches'] > 0 else 0
+            print(f"  ✓ Patches: {self.stats['total_patches']} ({flood_pct:.1f}% flood) | Failed: {self.stats['failed_tiles']}")
                 
         return region_metadata
     
@@ -637,11 +627,6 @@ class DataPreprocessor:
         df_flat = df.drop(columns=['quality_metrics', 'class_distribution'], errors='ignore')
         csv_path = self.output_dir / 'metadata' / f'{split_name}_metadata.csv'
         df_flat.to_csv(csv_path, index=False)
-        
-        print(f"\nMetadata saved:")
-        print(f"  JSON: {json_path}")
-        print(f"  Pickle: {pkl_path}")
-        print(f"  CSV: {csv_path}")
 
 
 def create_geo_stratified_split(
@@ -867,8 +852,8 @@ def main():
     (PROCESSED_VAL_DIR / 'processed_images').mkdir(exist_ok=True)
     
     # Copy validation files
-    print(f"\nCopying validation files...")
-    for metadata in tqdm(val_metadata, desc="Copying validation patches"):
+    for metadata in tqdm(val_metadata, desc=\"  Copying val patches\", unit=\"files\",
+                        bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}]'):
         # Extract just the filename from the path
         img_filename = Path(metadata['image_path']).name
         mask_filename = Path(metadata['mask_path']).name
@@ -889,26 +874,25 @@ def main():
         metadata['mask_path'] = str(dst_mask.relative_to(PROCESSED_VAL_DIR.parent))
     
     # Copy processed full-resolution images for validation
-    print(f"\nCopying validation full-resolution images...")
     copy_processed_full_images(val_metadata, PROCESSED_TRAIN_DIR, PROCESSED_VAL_DIR)
     
     # Save train and val metadata
-    print(f"\nSaving train/val metadata...")
     DataPreprocessor(PROCESSED_TRAIN_DIR).save_metadata(train_metadata, 'train')
     DataPreprocessor(PROCESSED_VAL_DIR).save_metadata(val_metadata, 'val')
+    print(f\"  ✓ Metadata saved (JSON, pickle, CSV)\")
     
     # ========== CALCULATE DATASET STATISTICS ==========
-    print(f"\n{'='*80}")
-    print("STEP 3: CALCULATING DATASET STATISTICS")
-    print(f"{'='*80}")
+    print(f\"\\n{'='*60}\")
+    print(\"STEP 3: Dataset Statistics\")
+    print(f\"{'='*60}\")
     
     # Sample images for statistics (use subset for speed)
     sample_size = min(100, len(train_metadata))
     sample_metadata = np.random.choice(train_metadata, sample_size, replace=False)
     
-    print(f"Calculating statistics from {sample_size} sample images...")
     sample_images = []
-    for metadata in tqdm(sample_metadata, desc="Loading samples"):
+    for metadata in tqdm(sample_metadata, desc=\"  Sampling\", unit=\"imgs\",
+                        bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}'):
         img_path = PROCESSED_TRAIN_DIR.parent / metadata['image_path']
         if img_path.exists():
             img = np.load(img_path)
@@ -917,18 +901,13 @@ def main():
     if sample_images:
         stats = calculate_dataset_statistics(sample_images)
         
-        print(f"\nDataset statistics:")
-        print(f"  Mean (per channel): {stats['mean']}")
-        print(f"  Std (per channel): {stats['std']}")
-        print(f"  Min: {stats['min']}")
-        print(f"  Max: {stats['max']}")
-        
         # Save statistics
         stats_path = PROCESSED_TRAIN_DIR.parent / 'dataset_statistics.json'
         with open(stats_path, 'w') as f:
             json.dump(stats, f, indent=2)
         
-        print(f"\nStatistics saved to: {stats_path}")
+        print(f\"  ✓ Mean: {[f'{x:.3f}' for x in stats['mean']]}\"
+              f\" | Std: {[f'{x:.3f}' for x in stats['std']]}\")
     
     # ========== FINAL SUMMARY ==========
     print(f"\n{'='*80}")

@@ -98,16 +98,17 @@ REMOVE_CLOUDS = False  # May incorrectly remove bright flood water (sun reflecti
 APPLY_DEBLUR = False   # Unnecessary for satellite data, may introduce noise
 CORRECT_GEOMETRY = False  # Unnecessary - satellite images already georeferenced
 
-# Class balancing
-# Based on EDA: ~20-22% flooded, ~78-80% non-flooded
+# Class balancing - OPTIMIZED FOR 80% IoU TARGET
+# With aggressive oversampling targeting 40% flood pixels, we need higher weights for minority classes
+# Formula: weight = (1 / frequency) * adjustment_factor
 CLASS_WEIGHTS = {
-    0: 1.0,   # background
-    1: 1.2,   # non-flooded buildings
-    2: 3.5,   # flooded buildings (heavily weighted due to imbalance)
-    3: 2.0,   # water
-    4: 4.0,   # flooded-water (highest priority)
-    5: 3.0,   # flooded roads (heavily weighted)
-    6: 1.3    # non-flooded roads
+    0: 0.5,   # background (abundant, reduce weight to prevent bias)
+    1: 2.0,   # no-damage (buildings - moderate importance)
+    2: 4.0,   # minor-damage (critical for flood detection)
+    3: 6.0,   # major-damage (very rare, highest weight)
+    4: 8.0,   # destroyed (extremely rare, maximum weight)
+    5: 5.0,   # un-classified (rare, high weight)
+    6: 1.5    # non-flooded-road (moderate frequency)
 }
 
 # Data augmentation probabilities
