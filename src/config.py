@@ -18,6 +18,12 @@ TRAIN_PATH = BASE_PATH / 'train'
 GERMANY_TRAIN = TRAIN_PATH / 'Germany_Training_Public'
 LOUISIANA_EAST_TRAIN = TRAIN_PATH / 'Louisiana-East_Training_Public'
 
+# Training region selection
+# Set to None to use all regions, or list specific regions to use
+# Example: SELECTED_REGIONS = ['Louisiana-East_Training_Public']
+SELECTED_REGIONS = ['Louisiana-East_Training_Public']  # Skip Germany - faster, more relevant to Louisiana-West test set
+# SELECTED_REGIONS = None  # Uncomment to use all available regions
+
 # Test data paths
 TEST_PATH = BASE_PATH / 'test'
 LOUISIANA_WEST_TEST = TEST_PATH

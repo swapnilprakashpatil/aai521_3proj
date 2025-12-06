@@ -24,7 +24,8 @@ from config import (
     TRAIN_RATIO, VAL_RATIO, TEST_RATIO,
     APPLY_CLAHE, CLAHE_CLIP_LIMIT, CLAHE_TILE_GRID_SIZE,
     MIN_VALID_PIXELS_RATIO, MAX_CLOUD_COVERAGE,
-    APPLY_ADVANCED_PREPROCESSING, REMOVE_CLOUDS, APPLY_DEBLUR, CORRECT_GEOMETRY
+    APPLY_ADVANCED_PREPROCESSING, REMOVE_CLOUDS, APPLY_DEBLUR, CORRECT_GEOMETRY,
+    SELECTED_REGIONS
 )
 from data_loader import DatasetLoader, load_tile_data
 from preprocessing import ImagePreprocessor, PatchExtractor, calculate_dataset_statistics
@@ -358,7 +359,7 @@ class DataPreprocessor:
             
             # Show region summary
             flood_pct = (self.stats['flood_positive_patches'] / self.stats['total_patches'] * 100) if self.stats['total_patches'] > 0 else 0
-            print(f"  ✓ Patches: {self.stats['total_patches']} ({flood_pct:.1f}% flood) | Failed: {self.stats['failed_tiles']}")
+            print(f"Patches: {self.stats['total_patches']} ({flood_pct:.1f}% flood) | Failed: {self.stats['failed_tiles']}")
                 
         return region_metadata
     
@@ -807,6 +808,24 @@ def main():
     for region_path, region_name in training_regions:
         print(f"  - {region_name}: {region_path}")
     
+    # Filter regions if SELECTED_REGIONS is configured
+    if SELECTED_REGIONS is not None:
+        filtered_regions = [(path, name) for path, name in training_regions 
+                           if name in SELECTED_REGIONS]
+        if filtered_regions:
+            print(f"\nUsing selected regions only:")
+            for region_path, region_name in filtered_regions:
+                print(f"  ✓ {region_name}")
+            skipped = [name for _, name in training_regions if name not in SELECTED_REGIONS]
+            if skipped:
+                print(f"\nSkipping regions:")
+                for name in skipped:
+                    print(f"  ✗ {name}")
+            training_regions = filtered_regions
+        else:
+            print(f"\nWARNING: SELECTED_REGIONS configured but no matches found!")
+            print(f"Using all discovered regions instead.")
+    
     # Process all discovered training regions
     all_train_metadata = []
     preprocessor_train = DataPreprocessor(output_dir=PROCESSED_TRAIN_DIR)
@@ -905,7 +924,7 @@ def main():
         with open(stats_path, 'w') as f:
             json.dump(stats, f, indent=2)
         
-        print(f"  ✓ Mean: {[f'{x:.3f}' for x in stats['mean']]}" 
+        print(f"Mean: {[f'{x:.3f}' for x in stats['mean']]}" 
               f" | Std: {[f'{x:.3f}' for x in stats['std']]}")
     
     # ========== FINAL SUMMARY ==========

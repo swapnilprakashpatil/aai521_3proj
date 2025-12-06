@@ -641,11 +641,11 @@ def cleanup_processed_data(processed_dir: Path) -> Dict[str, any]:
             result['error'] = f"Directory still exists with {remaining} files"
         else:
             result['deleted'] = True
-            print(f"✓ Cleanup: Deleted {result['total_files']} files")
+            print(f"Cleanup: Deleted {result['total_files']} files")
             
     except Exception as e:
         result['error'] = str(e)
-        print(f"✗ Cleanup failed: {e}")
+        print(f"Cleanup failed: {e}")
     
     return result
 
@@ -692,7 +692,16 @@ def validate_class_balance(processed_dir: Path, num_classes: int = 7) -> Dict[st
         print(f"✗ {result['error']}")
         return result
     
-    # Calculate class distribution
+    # Calculate patch-level statistics (critical for oversampling validation)
+    flood_positive_patches = 0
+    for mask_path in train_masks:
+        mask = np.load(mask_path)
+        if np.sum(mask > 0) > 0:  # Has any flood pixels
+            flood_positive_patches += 1
+    
+    patch_flood_pct = (flood_positive_patches / len(train_masks) * 100) if len(train_masks) > 0 else 0
+    
+    # Calculate pixel-level class distribution
     class_counts = torch.zeros(num_classes)
     
     for mask_path in tqdm(train_masks, desc="Computing distribution"):
@@ -708,6 +717,7 @@ def validate_class_balance(processed_dir: Path, num_classes: int = 7) -> Dict[st
     flood_pct = ((total_pixels - class_counts[0]) / total_pixels * 100).item()
     result['background_pct'] = bg_pct
     result['flood_pct'] = flood_pct
+    result['patch_flood_pct'] = patch_flood_pct
     
     class_names = ['background', 'no-damage', 'minor-damage', 'major-damage', 
                    'destroyed', 'un-classified', 'non-flooded-road']
@@ -721,11 +731,11 @@ def validate_class_balance(processed_dir: Path, num_classes: int = 7) -> Dict[st
         if class_counts[cls] == 0:
             result['missing_classes'].append(class_names[cls])
     
-    # Quality assessment
-    if bg_pct > 90:
+    # Quality assessment based on PATCH-LEVEL distribution (what models see during training)
+    if patch_flood_pct < 20:
         result['quality'] = "POOR"
         status_icon = "✗"
-    elif bg_pct > 70:
+    elif patch_flood_pct < 35:
         result['quality'] = "ACCEPTABLE"
         status_icon = "⚠"
     else:
@@ -734,7 +744,8 @@ def validate_class_balance(processed_dir: Path, num_classes: int = 7) -> Dict[st
     
     # Display compact results
     print(f"\n{status_icon} Quality: {result['quality']}")
-    print(f"  Background: {bg_pct:.1f}% | Flood: {flood_pct:.1f}%")
+    print(f"  PATCH LEVEL: {patch_flood_pct:.1f}% flood patches (oversampling applied)")
+    print(f"  PIXEL LEVEL: {bg_pct:.1f}% background | {flood_pct:.1f}% flood (raw data)")
     
     # Show only non-zero classes
     non_zero = [f"{name}({result['class_distribution'][name]['percentage']:.1f}%)" 
@@ -742,11 +753,11 @@ def validate_class_balance(processed_dir: Path, num_classes: int = 7) -> Dict[st
                 if result['class_distribution'][name]['percentage'] > 0.01]
     print(f"  Classes: {', '.join(non_zero)}")
     
-    # Expected performance
+    # Expected performance based on patch distribution
     if result['quality'] == "POOR":
-        print(f"  Expected IoU: 20-35% - DO NOT TRAIN")
+        print(f"  Expected IoU: 20-35% - Need more oversampling")
     elif result['quality'] == "ACCEPTABLE":
-        print(f"  Expected IoU: 40-55% - Suboptimal")
+        print(f"  Expected IoU: 40-55% - Moderate performance")
     else:
         print(f"  Expected IoU: 60-80% - Ready!")
     
