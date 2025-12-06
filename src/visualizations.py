@@ -744,7 +744,9 @@ def plot_csv_metadata_analysis(csv_analysis: Dict) -> plt.Figure:
         if 'reference' in data:
             df_ref = data['reference']['dataframe']
             if 'flooded' in df_ref.columns:
-                flooded_counts = df_ref['flooded'].value_counts()
+                # Convert to numeric, handling string values
+                flooded_numeric = pd.to_numeric(df_ref['flooded'], errors='coerce')
+                flooded_counts = flooded_numeric.value_counts()
                 labels = ['Flooded' if k == 1 else 'Not Flooded' for k in flooded_counts.index]
                 colors = ['#EF476F', '#118AB2']
                 wedges, texts, autotexts = ax2.pie(flooded_counts, labels=labels, autopct='%1.1f%%',
@@ -770,7 +772,8 @@ def plot_csv_metadata_analysis(csv_analysis: Dict) -> plt.Figure:
         if 'reference' in data:
             df_ref = data['reference']['dataframe']
             if 'length_m' in df_ref.columns:
-                valid_lengths = df_ref['length_m'].dropna()
+                # Convert to numeric, handling string values
+                valid_lengths = pd.to_numeric(df_ref['length_m'], errors='coerce').dropna()
                 if len(valid_lengths) > 0:
                     ax3.hist(valid_lengths, bins=50, color='#118AB2', edgecolor='black', alpha=0.7)
                     ax3.set_title(f'Road Segment Length Distribution - {dataset_name}', 
