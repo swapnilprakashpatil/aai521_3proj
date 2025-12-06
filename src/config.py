@@ -79,7 +79,7 @@ NUM_CLASSES = 7  # Classes 0-6
 # Patch extraction
 PATCH_SIZE = 512  # Size for patch extraction (optimal for CV segmentation)
 PATCH_OVERLAP = 128  # Overlap between patches to ensure boundary coverage
-MIN_FLOOD_PIXELS = 500  # FIXED: Lowered from 2621 to 500 (~0.19% of 512x512 patch) - more sensitive to small floods
+MIN_FLOOD_PIXELS = 100  # AGGRESSIVE: Lowered to 100 (~0.04% of 512x512 patch) - capture even small flood areas
 
 # Normalization settings
 # Based on typical satellite imagery ranges

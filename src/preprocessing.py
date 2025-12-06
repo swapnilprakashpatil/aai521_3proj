@@ -433,9 +433,10 @@ class PatchExtractor:
                     patch_dict['mask'] = mask_patch
                     
                     # Calculate flood statistics
-                    # Count damage/flood classes: 2 (minor-damage), 3 (major-damage), 4 (destroyed)
-                    # Classes > 1 indicate some level of damage/flooding (excluding class 5=unclassified, 6=non-flooded-road)
-                    flood_pixels = np.sum((mask_patch == 2) | (mask_patch == 3) | (mask_patch == 4))
+                    # Count ALL non-background classes as flood-related (classes 1-6)
+                    # Class 0 = background, Classes 1-6 = various flood/damage types
+                    # This ensures we capture all flood information, not just damage classes
+                    flood_pixels = np.sum(mask_patch > 0)
                     patch_dict['flood_pixels'] = flood_pixels
                     patch_dict['is_flood_positive'] = flood_pixels >= self.min_flood_pixels
                     
@@ -448,13 +449,30 @@ class PatchExtractor:
         # Oversample flood-positive patches
         if oversample_flood and mask is not None:
             flood_patches = [p for p in patches if p.get('is_flood_positive', False)]
+            non_flood_patches = [p for p in patches if not p.get('is_flood_positive', False)]
             
-            # Duplicate flood patches to balance classes
-            # Based on EDA: ~20% flooded, so we duplicate to get closer to 50/50
-            if len(flood_patches) > 0:
-                n_duplicates = min(len(patches) // len(flood_patches) - 1, 3)  # Max 3x duplication
-                for _ in range(n_duplicates):
-                    patches.extend(flood_patches)
+            # AGGRESSIVE oversampling to achieve 30-50% flood class representation
+            # Target: Balance flood and non-flood patches for better training
+            if len(flood_patches) > 0 and len(non_flood_patches) > 0:
+                # Calculate how many times to duplicate flood patches
+                # Target ratio: 40% flood, 60% non-flood
+                target_flood_ratio = 0.4
+                current_flood_ratio = len(flood_patches) / len(patches)
+                
+                if current_flood_ratio < target_flood_ratio:
+                    # Calculate required duplicates to reach target ratio
+                    n_duplicates = int((target_flood_ratio * len(patches) - len(flood_patches)) / 
+                                      (len(flood_patches) * (1 - target_flood_ratio)))
+                    n_duplicates = max(1, min(n_duplicates, 20))
+                    
+                    total_after = len(patches) + (n_duplicates * len(flood_patches))
+                    flood_after = len(flood_patches) * (n_duplicates + 1)
+                    final_flood_ratio = flood_after / total_after
+                    
+                    print(f"  Oversampling: {len(flood_patches)} flood patches x{n_duplicates+1} → {final_flood_ratio*100:.1f}% flood ({total_after} total)")
+                    
+                    for _ in range(n_duplicates):
+                        patches.extend(flood_patches)
                     
         return patches
     
@@ -562,6 +580,193 @@ def calculate_dataset_statistics(images: List[np.ndarray]) -> Dict:
         'min': np.min(all_pixels, axis=0).tolist(),
         'max': np.max(all_pixels, axis=0).tolist()
     }
+
+
+def cleanup_processed_data(processed_dir: Path) -> Dict[str, any]:
+    """
+    Delete all previously processed data before re-running preprocessing
+    
+    Args:
+        processed_dir: Path to the processed data directory
+        
+    Returns:
+        Dictionary with cleanup status and statistics
+    """
+    import shutil
+    import time
+    
+    result = {
+        'existed': False,
+        'deleted': False,
+        'total_files': 0,
+        'error': None
+    }
+    
+    print("="*80)
+    print("CLEANUP: Deleting Previous Preprocessing Output")
+    print("="*80)
+    
+    # Check if processed directory exists
+    if not processed_dir.exists():
+        print(f"\nNo processed directory found at: {processed_dir}")
+        print("STATUS: Starting fresh (no cleanup needed)")
+        result['deleted'] = True
+        return result
+    
+    result['existed'] = True
+    print(f"\nFound processed directory: {processed_dir}")
+    
+    # Count files before deletion
+    # Count files
+    for split in ['train', 'val', 'test']:
+        split_dir = processed_dir / split
+        if split_dir.exists():
+            for subdir in ['images', 'masks', 'metadata', 'processed_images']:
+                subdir_path = split_dir / subdir
+                if subdir_path.exists():
+                    result['total_files'] += len(list(subdir_path.glob('*')))
+    
+    print(f"Deleting {result['total_files']} files...")
+    
+    try:
+        shutil.rmtree(processed_dir)
+        
+        # Wait for deletion
+        max_wait = 10
+        wait_interval = 0.5
+        elapsed = 0
+        
+        while processed_dir.exists() and elapsed < max_wait:
+            time.sleep(wait_interval)
+            elapsed += wait_interval
+        
+        if processed_dir.exists():
+            remaining = sum(1 for _ in processed_dir.rglob('*') if _.is_file())
+            result['error'] = f"Directory still exists with {remaining} files"
+            print(f"WARNING: {result['error']}")
+        else:
+            result['deleted'] = True
+            print("SUCCESS: Deleted successfully")
+            
+    except Exception as e:
+        result['error'] = str(e)
+        print(f"ERROR: {e}")
+    
+    print("="*80)
+    
+    return result
+
+
+def validate_class_balance(processed_dir: Path, num_classes: int = 7) -> Dict[str, any]:
+    """
+    Validate class balance after preprocessing to ensure proper distribution
+    
+    Args:
+        processed_dir: Path to processed data directory
+        num_classes: Number of classes in the dataset
+        
+    Returns:
+        Dictionary with validation results
+    """
+    import torch
+    from tqdm import tqdm
+    
+    result = {
+        'success': False,
+        'quality': None,
+        'background_pct': 0.0,
+        'flood_pct': 0.0,
+        'class_distribution': {},
+        'missing_classes': [],
+        'error': None
+    }
+    
+    print("="*80)
+    print("CLASS BALANCE VALIDATION")
+    print("="*80)
+    
+    train_dir = processed_dir / 'train'
+    
+    if not train_dir.exists():
+        result['error'] = "Processed data not found"
+        print(f"\nERROR: {result['error']}")
+        return result
+    
+    train_masks = sorted((train_dir / 'masks').glob('*.npy'))
+    
+    if len(train_masks) == 0:
+        result['error'] = "No mask files found"
+        print(f"\nERROR: {result['error']}")
+        return result
+    
+    print(f"Analyzing {len(train_masks)} training masks...")
+    
+    # Calculate class distribution
+    class_counts = torch.zeros(num_classes)
+    
+    for mask_path in tqdm(train_masks, desc="Computing distribution"):
+        mask = np.load(mask_path)
+        for cls in range(num_classes):
+            class_counts[cls] += (mask == cls).sum()
+    
+    total_pixels = class_counts.sum()
+    
+    # Store results
+    result['success'] = True
+    bg_pct = (class_counts[0] / total_pixels * 100).item()
+    flood_pct = ((total_pixels - class_counts[0]) / total_pixels * 100).item()
+    result['background_pct'] = bg_pct
+    result['flood_pct'] = flood_pct
+    
+    class_names = ['background', 'no-damage', 'minor-damage', 'major-damage', 
+                   'destroyed', 'un-classified', 'non-flooded-road']
+    
+    for cls in range(num_classes):
+        pct = (class_counts[cls] / total_pixels * 100).item()
+        result['class_distribution'][class_names[cls]] = {
+            'count': int(class_counts[cls].item()),
+            'percentage': pct
+        }
+        if class_counts[cls] == 0:
+            result['missing_classes'].append(class_names[cls])
+    
+    # Display results
+    print("\n" + "="*80)
+    print("Results:")
+    print(f"  Background: {bg_pct:.2f}% | Flood: {flood_pct:.2f}%")
+    
+    for cls, name in enumerate(class_names):
+        info = result['class_distribution'][name]
+        if info['percentage'] > 0.01:
+            print(f"  Class {cls} ({name}): {info['percentage']:.2f}%")
+    
+    # Quality assessment
+    if bg_pct > 90:
+        result['quality'] = "POOR"
+        status = "FAILED"
+    elif bg_pct > 70:
+        result['quality'] = "ACCEPTABLE"
+        status = "WARNING"
+    else:
+        result['quality'] = "GOOD"
+        status = "PASSED"
+    
+    print(f"\nQuality: {result['quality']} ({status})")
+    
+    if result['missing_classes']:
+        print(f"Missing: {', '.join(result['missing_classes'])}")
+    
+    # Expected performance
+    if result['quality'] == "POOR":
+        print(f"Expected Max IoU: 20-35% - DO NOT TRAIN!")
+    elif result['quality'] == "ACCEPTABLE":
+        print(f"Expected Max IoU: 40-55% - Suboptimal")
+    else:
+        print(f"Expected Max IoU: 60-80% - Ready for training!")
+    
+    print("="*80)
+    
+    return result
 
 
 if __name__ == "__main__":

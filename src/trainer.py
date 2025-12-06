@@ -455,7 +455,7 @@ class Trainer:
             cpu_percent_end = psutil.cpu_percent(interval=0.1)
             
             # Print condensed epoch summary (one line)
-            status = "⭐ BEST" if is_best else ""
+            status = "BEST" if is_best else ""
             print(f"{epoch}/{num_epochs:<4} {train_loss:<8.4f} {val_loss:<8.4f} {train_metrics['mean_iou']:<7.4f} {val_metrics['mean_iou']:<7.4f} {epoch_time:<8.1f} {status}")
             
             # Store epoch summary
