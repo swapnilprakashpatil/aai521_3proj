@@ -852,7 +852,7 @@ def main():
     (PROCESSED_VAL_DIR / 'processed_images').mkdir(exist_ok=True)
     
     # Copy validation files
-    for metadata in tqdm(val_metadata, desc=\"  Copying val patches\", unit=\"files\",
+    for metadata in tqdm(val_metadata, desc="  Copying val patches", unit="files",
                         bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}]'):
         # Extract just the filename from the path
         img_filename = Path(metadata['image_path']).name
@@ -879,19 +879,18 @@ def main():
     # Save train and val metadata
     DataPreprocessor(PROCESSED_TRAIN_DIR).save_metadata(train_metadata, 'train')
     DataPreprocessor(PROCESSED_VAL_DIR).save_metadata(val_metadata, 'val')
-    print(f\"  ✓ Metadata saved (JSON, pickle, CSV)\")
     
     # ========== CALCULATE DATASET STATISTICS ==========
-    print(f\"\\n{'='*60}\")
-    print(\"STEP 3: Dataset Statistics\")
-    print(f\"{'='*60}\")
+    print(f"\n{'='*60}")
+    print("STEP 3: Dataset Statistics")
+    print(f"{'='*60}")
     
     # Sample images for statistics (use subset for speed)
     sample_size = min(100, len(train_metadata))
     sample_metadata = np.random.choice(train_metadata, sample_size, replace=False)
     
     sample_images = []
-    for metadata in tqdm(sample_metadata, desc=\"  Sampling\", unit=\"imgs\",
+    for metadata in tqdm(sample_metadata, desc="  Sampling", unit="imgs",
                         bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}'):
         img_path = PROCESSED_TRAIN_DIR.parent / metadata['image_path']
         if img_path.exists():
@@ -906,8 +905,8 @@ def main():
         with open(stats_path, 'w') as f:
             json.dump(stats, f, indent=2)
         
-        print(f\"  ✓ Mean: {[f'{x:.3f}' for x in stats['mean']]}\"
-              f\" | Std: {[f'{x:.3f}' for x in stats['std']]}\")
+        print(f"  ✓ Mean: {[f'{x:.3f}' for x in stats['mean']]}" 
+              f" | Std: {[f'{x:.3f}' for x in stats['std']]}")
     
     # ========== FINAL SUMMARY ==========
     print(f"\n{'='*80}")
