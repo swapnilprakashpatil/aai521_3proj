@@ -743,11 +743,32 @@ def plot_csv_metadata_analysis(csv_analysis: Dict) -> plt.Figure:
     for dataset_name, data in csv_analysis.items():
         if 'reference' in data:
             df_ref = data['reference']['dataframe']
-            if 'flooded' in df_ref.columns:
-                # Convert to numeric, handling string values
-                flooded_numeric = pd.to_numeric(df_ref['flooded'], errors='coerce').dropna()
-                if len(flooded_numeric) > 0:
-                    flooded_counts = flooded_numeric.value_counts()
+            # Check both 'Flooded' and 'flooded' column names
+            flood_col = None
+            if 'Flooded' in df_ref.columns:
+                flood_col = 'Flooded'
+            elif 'flooded' in df_ref.columns:
+                flood_col = 'flooded'
+            
+            if flood_col:
+                # Handle both boolean strings ('True'/'False') and numeric values
+                flood_series = df_ref[flood_col].copy()
+                
+                # Convert string booleans to integers
+                def convert_flood_value(val):
+                    val_str = str(val).strip().lower()
+                    if val_str == 'true' or val_str == '1':
+                        return 1
+                    elif val_str == 'false' or val_str == '0':
+                        return 0
+                    else:
+                        return None
+                
+                flood_series = flood_series.apply(convert_flood_value)
+                flood_series = flood_series.dropna()
+                
+                if len(flood_series) > 0:
+                    flooded_counts = flood_series.value_counts()
                     labels = ['Flooded' if k == 1 else 'Not Flooded' for k in flooded_counts.index]
                     colors = ['#EF476F', '#118AB2']
                     wedges, texts, autotexts = ax2.pie(flooded_counts, labels=labels, autopct='%1.1f%%',
